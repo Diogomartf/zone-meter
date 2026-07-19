@@ -30,9 +30,19 @@
       [
         "expo-splash-screen",
         {
-          "backgroundColor": "#3B9EFF",
-          "image": "./assets/images/splash-icon.png",
-          "imageWidth": 200
+          "backgroundColor": "#2B8FFF",
+          "image": "./assets/images/splash.png",
+          "resizeMode": "cover",
+          "enableFullScreenImage_legacy": true,
+          "ios": {
+            "image": "./assets/images/splash.png",
+            "backgroundColor": "#2B8FFF"
+          },
+          "android": {
+            "image": "./assets/images/splash-android.png",
+            "imageWidth": 288,
+            "backgroundColor": "#2B8FFF"
+          }
         }
       ],
       "expo-audio"
