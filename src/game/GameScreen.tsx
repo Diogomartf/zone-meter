@@ -444,16 +444,29 @@ export function GameScreen() {
 
   const hitEnabled = phase === 'filling' || phase === 'gameover';
 
+  const headerHeight = insets.top + 148;
+
   return (
     <View style={styles.root}>
+      {/* Sky header only — logo / lives / best stay on blue */}
+      <View style={[styles.headerBand, { height: headerHeight }]} pointerEvents="none">
+        <LinearGradient
+          colors={[...Gradients.sky]}
+          locations={[...Gradients.skyStops]}
+          style={StyleSheet.absoluteFill}
+        />
+        <Clouds />
+      </View>
+
+      {/* Tap / play field — zone green under the header */}
       <LinearGradient
-        colors={[...Gradients.sky]}
-        locations={[...Gradients.skyStops]}
-        style={styles.sky}
+        colors={[...Gradients.playZone]}
+        locations={[...Gradients.playZoneStops]}
+        style={[styles.playZone, { top: headerHeight - 28 }]}
+        pointerEvents="none"
       />
-      <Clouds />
-      <View style={styles.hillBack} />
-      <View style={styles.hillFront} />
+      <View style={[styles.playZoneLip, { top: headerHeight - 28 }]} pointerEvents="none" />
+
       <View style={[styles.ground, { height: 44 + insets.bottom }]}>
         <View style={styles.hazard} />
       </View>
@@ -581,7 +594,33 @@ export function GameScreen() {
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: GameColors.skyTop },
-  sky: { position: 'absolute', left: 0, right: 0, top: 0, bottom: 0 },
+  headerBand: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    top: 0,
+    overflow: 'hidden',
+    zIndex: 0,
+  },
+  playZone: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    borderTopLeftRadius: 36,
+    borderTopRightRadius: 36,
+    zIndex: 0,
+  },
+  playZoneLip: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    height: 4,
+    borderTopLeftRadius: 36,
+    borderTopRightRadius: 36,
+    backgroundColor: 'rgba(26,28,44,0.18)',
+    zIndex: 0,
+  },
   hitLayer: {
     position: 'absolute',
     left: 0,
@@ -591,32 +630,13 @@ const styles = StyleSheet.create({
     zIndex: 10,
   },
   content: { flex: 1, paddingHorizontal: 20, zIndex: 1 },
-  hillBack: {
-    position: 'absolute',
-    left: -40,
-    right: -40,
-    bottom: 58,
-    height: 100,
-    borderTopLeftRadius: 140,
-    borderTopRightRadius: 140,
-    backgroundColor: GameColors.hillDark,
-  },
-  hillFront: {
-    position: 'absolute',
-    left: -20,
-    right: -20,
-    bottom: 40,
-    height: 78,
-    borderTopLeftRadius: 120,
-    borderTopRightRadius: 120,
-    backgroundColor: GameColors.hill,
-  },
   ground: {
     position: 'absolute',
     left: 0,
     right: 0,
     bottom: 0,
     backgroundColor: GameColors.ground,
+    zIndex: 0,
   },
   hazard: {
     height: 14,

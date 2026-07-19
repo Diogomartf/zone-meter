@@ -1,7 +1,10 @@
 export const GameColors = {
   skyTop: '#4EC0CA',
   skyMid: '#70D5DE',
-  skyBottom: '#D8F99A',
+  skyBottom: '#8FE8F0',
+  /** Main tap / play field under the header */
+  playZone: '#8CFF2A',
+  playZoneDeep: '#6FE012',
   hill: '#5CDE70',
   hillDark: '#3FBF55',
   ground: '#DED895',
@@ -37,7 +40,9 @@ export const GameColors = {
 /** Pre-hoisted gradient tuples — avoid reallocating every render */
 export const Gradients = {
   sky: [GameColors.skyTop, GameColors.skyMid, GameColors.skyBottom] as const,
-  skyStops: [0, 0.62, 1] as const,
+  skyStops: [0, 0.55, 1] as const,
+  playZone: [GameColors.playZone, GameColors.playZoneDeep] as const,
+  playZoneStops: [0, 1] as const,
   zone: [
     'rgba(255,75,75,0)',
     'rgba(255,75,75,0.45)',
