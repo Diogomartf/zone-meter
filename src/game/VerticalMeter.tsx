@@ -1,6 +1,14 @@
 import { LinearGradient } from 'expo-linear-gradient';
 import { StyleSheet, View } from 'react-native';
-import Animated, { useAnimatedStyle, type SharedValue } from 'react-native-reanimated';
+import Animated, {
+  Easing,
+  useAnimatedStyle,
+  useSharedValue,
+  withRepeat,
+  withTiming,
+  type SharedValue,
+} from 'react-native-reanimated';
+import { useEffect } from 'react';
 
 import { GameColors } from '@/constants/gameTheme';
 import type { RoundConfig } from '@/game/types';
@@ -12,32 +20,61 @@ type Props = {
 
 const METER_H = 340;
 const METER_W = 108;
+const INNER_H = METER_H - 20;
 
 export function VerticalMeter({ fill, round }: Props) {
+  const wobble = useSharedValue(0);
+
+  useEffect(() => {
+    wobble.value = withRepeat(
+      withTiming(1, { duration: 900, easing: Easing.inOut(Easing.sin) }),
+      -1,
+      true,
+    );
+  }, [wobble]);
+
   const liquidStyle = useAnimatedStyle(() => ({
-    height: Math.max(10, fill.value * (METER_H - 20)),
+    height: Math.max(14, fill.value * INNER_H),
   }));
 
-  const zoneBottom = (round.target - round.zoneHalf) * (METER_H - 20);
-  const zoneHeight = round.zoneHalf * 2 * (METER_H - 20);
-  const perfectBottom = (round.target - round.perfectHalf) * (METER_H - 20);
-  const perfectHeight = Math.max(8, round.perfectHalf * 2 * (METER_H - 20));
-  const markerBottom = 10 + round.target * (METER_H - 20);
+  const surfaceStyle = useAnimatedStyle(() => ({
+    transform: [{ translateY: (wobble.value - 0.5) * 5 }, { scaleX: 1 + wobble.value * 0.04 }],
+  }));
+
+  const blobAStyle = useAnimatedStyle(() => ({
+    transform: [{ translateY: -wobble.value * 8 }, { translateX: wobble.value * 3 }],
+    opacity: 0.35 + wobble.value * 0.25,
+  }));
+
+  const blobBStyle = useAnimatedStyle(() => ({
+    transform: [{ translateY: wobble.value * 6 }, { translateX: -wobble.value * 4 }],
+    opacity: 0.25 + (1 - wobble.value) * 0.2,
+  }));
+
+  const zoneBottom = (round.target - round.zoneHalf) * INNER_H;
+  const zoneHeight = Math.max(10, round.zoneHalf * 2 * INNER_H);
+  const markerBottom = 10 + round.target * INNER_H;
 
   return (
     <View style={styles.wrap}>
-      <View style={[styles.markerRow, { bottom: markerBottom - 14 }]}>
-        <View style={styles.flag}>
-          <View style={styles.flagPole} />
-          <View style={styles.flagTip} />
-        </View>
+      <View style={[styles.markerRow, { bottom: markerBottom - 12 }]}>
+        <View style={styles.flagTip} />
       </View>
 
       <View style={styles.pipeCap} />
       <View style={styles.shell}>
         <View style={styles.shellLip} />
         <View style={styles.glass}>
-          <View
+          {/* Single soft gradient zone band — one line, hot center */}
+          <LinearGradient
+            colors={[
+              'rgba(255,225,74,0)',
+              'rgba(255,225,74,0.55)',
+              'rgba(255,106,61,0.95)',
+              'rgba(255,225,74,0.55)',
+              'rgba(255,225,74,0)',
+            ]}
+            locations={[0, 0.22, 0.5, 0.78, 1]}
             style={[
               styles.zone,
               {
@@ -46,26 +83,43 @@ export function VerticalMeter({ fill, round }: Props) {
               },
             ]}
           />
-          <View
-            style={[
-              styles.perfect,
-              {
-                bottom: perfectBottom,
-                height: perfectHeight,
-              },
-            ]}
-          />
 
           <Animated.View style={[styles.liquidWrap, liquidStyle]}>
             <LinearGradient
-              colors={[GameColors.liquidHigh, GameColors.liquidMid, GameColors.liquidLow]}
-              locations={[0, 0.4, 1]}
+              colors={[
+                GameColors.liquidFoam,
+                GameColors.liquidCore,
+                GameColors.liquidMid,
+                GameColors.liquidDeep,
+                GameColors.liquidShade,
+              ]}
+              locations={[0, 0.12, 0.4, 0.72, 1]}
               style={StyleSheet.absoluteFill}
             />
-            <View style={styles.liquidShine} />
-            <View style={styles.liquidBubbleA} />
-            <View style={styles.liquidBubbleB} />
-            <View style={styles.liquidTop} />
+
+            {/* Alien goo sheen */}
+            <LinearGradient
+              colors={['rgba(255,255,255,0.35)', 'rgba(255,255,255,0)', 'rgba(57,255,20,0.2)']}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={styles.sheen}
+            />
+
+            <Animated.View style={[styles.blobA, blobAStyle]} />
+            <Animated.View style={[styles.blobB, blobBStyle]} />
+            <View style={styles.blobC} />
+
+            {/* Wobbly alien surface */}
+            <Animated.View style={[styles.surface, surfaceStyle]}>
+              <LinearGradient
+                colors={['rgba(233,255,224,0.95)', 'rgba(200,255,61,0.85)', 'rgba(57,255,20,0.4)']}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+                style={styles.surfaceFill}
+              />
+              <View style={styles.surfaceBumpL} />
+              <View style={styles.surfaceBumpR} />
+            </Animated.View>
           </Animated.View>
         </View>
       </View>
@@ -118,6 +172,11 @@ const styles = StyleSheet.create({
     borderWidth: 3,
     borderColor: GameColors.ink,
   },
+  zone: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+  },
   liquidWrap: {
     position: 'absolute',
     left: 0,
@@ -125,86 +184,84 @@ const styles = StyleSheet.create({
     bottom: 0,
     overflow: 'hidden',
   },
-  liquidShine: {
+  sheen: {
+    ...StyleSheet.absoluteFill,
+  },
+  blobA: {
     position: 'absolute',
-    left: 10,
-    top: 10,
-    bottom: 10,
+    left: 18,
+    bottom: 40,
+    width: 28,
+    height: 34,
+    borderRadius: 18,
+    backgroundColor: 'rgba(200,255,61,0.45)',
+  },
+  blobB: {
+    position: 'absolute',
+    right: 14,
+    bottom: 70,
+    width: 20,
+    height: 26,
+    borderRadius: 14,
+    backgroundColor: 'rgba(0,194,168,0.4)',
+  },
+  blobC: {
+    position: 'absolute',
+    left: 34,
+    bottom: 110,
     width: 12,
-    borderRadius: 999,
-    backgroundColor: 'rgba(255,255,255,0.35)',
-  },
-  liquidBubbleA: {
-    position: 'absolute',
-    right: 16,
-    bottom: 28,
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-    backgroundColor: 'rgba(255,255,255,0.45)',
-  },
-  liquidBubbleB: {
-    position: 'absolute',
-    right: 28,
-    bottom: 54,
-    width: 7,
-    height: 7,
-    borderRadius: 4,
-    backgroundColor: 'rgba(255,255,255,0.35)',
-  },
-  liquidTop: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    top: 0,
     height: 12,
-    backgroundColor: 'rgba(255,255,255,0.4)',
+    borderRadius: 8,
+    backgroundColor: 'rgba(233,255,224,0.55)',
   },
-  zone: {
+  surface: {
     position: 'absolute',
-    left: 0,
-    right: 0,
-    backgroundColor: 'rgba(255, 225, 74, 0.55)',
-    borderTopWidth: 3,
-    borderBottomWidth: 3,
-    borderColor: GameColors.white,
+    left: -6,
+    right: -6,
+    top: -6,
+    height: 22,
   },
-  perfect: {
+  surfaceFill: {
+    ...StyleSheet.absoluteFill,
+    borderTopLeftRadius: 40,
+    borderTopRightRadius: 40,
+  },
+  surfaceBumpL: {
     position: 'absolute',
-    left: 0,
-    right: 0,
-    backgroundColor: GameColors.perfect,
-    borderTopWidth: 2,
-    borderBottomWidth: 2,
-    borderColor: GameColors.ink,
+    left: 18,
+    top: -4,
+    width: 22,
+    height: 14,
+    borderRadius: 12,
+    backgroundColor: 'rgba(233,255,224,0.85)',
+  },
+  surfaceBumpR: {
+    position: 'absolute',
+    right: 26,
+    top: -2,
+    width: 16,
+    height: 12,
+    borderRadius: 10,
+    backgroundColor: 'rgba(57,255,20,0.7)',
   },
   markerRow: {
     position: 'absolute',
-    right: 0,
-    width: 46,
-    height: 28,
+    right: 2,
+    width: 40,
+    height: 24,
     zIndex: 3,
-  },
-  flag: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  flagPole: {
-    width: 5,
-    height: 28,
-    backgroundColor: GameColors.ink,
-    borderRadius: 2,
+    justifyContent: 'center',
   },
   flagTip: {
     width: 0,
     height: 0,
-    borderTopWidth: 10,
-    borderBottomWidth: 10,
-    borderLeftWidth: 18,
+    borderTopWidth: 9,
+    borderBottomWidth: 9,
+    borderRightWidth: 16,
     borderTopColor: 'transparent',
     borderBottomColor: 'transparent',
-    borderLeftColor: GameColors.perfect,
-    marginLeft: -1,
+    borderRightColor: GameColors.zoneHot,
+    alignSelf: 'flex-end',
   },
   pipeBase: {
     width: METER_W + 26,

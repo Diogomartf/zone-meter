@@ -206,7 +206,7 @@ export function GameScreen() {
       : outcome?.label === 'Perfect'
         ? GameColors.lemon
         : outcome?.label === 'Great'
-          ? GameColors.liquidHigh
+          ? GameColors.zoneHot
           : outcome?.result === 'zone'
             ? GameColors.white
             : GameColors.white;
@@ -244,23 +244,24 @@ export function GameScreen() {
       <Animated.View style={[styles.flash, flashStyle]} pointerEvents="none" />
 
       <View style={[styles.content, { paddingTop: insets.top + 8, paddingBottom: insets.bottom + 18 }]}>
-        <OutlineText style={styles.brand} color={GameColors.lemon} outlineWidth={3}>
-          ZONE METER
-        </OutlineText>
-
-        <OutlineText style={styles.bigScore} outlineWidth={4}>
-          {String(score)}
-        </OutlineText>
-
-        <View style={styles.hudRow}>
-          <View style={[styles.chip, styles.chipGreen]}>
-            <Text style={styles.chipLabel}>LVL</Text>
-            <Text style={styles.chipValue}>{round.level}</Text>
+        <View style={styles.topRow}>
+          <OutlineText style={styles.brand} color={GameColors.lemon} outlineWidth={3}>
+            ZONE METER
+          </OutlineText>
+          <View style={styles.bestPill}>
+            <Text style={styles.bestLabel}>BEST</Text>
+            <Text style={styles.bestValue}>{highScore}</Text>
           </View>
-          <View style={[styles.chip, styles.chipGold]}>
-            <Text style={styles.chipLabel}>BEST</Text>
-            <Text style={styles.chipValue}>{highScore}</Text>
-          </View>
+        </View>
+
+        <View style={styles.statsBlock}>
+          <OutlineText style={styles.bigScore} color={GameColors.white} outlineWidth={4}>
+            {String(score)}
+          </OutlineText>
+          <Text style={styles.ptsLabel}>PTS</Text>
+          <OutlineText style={styles.levelText} color={GameColors.lemon} outlineWidth={2}>
+            {`LEVEL ${round.level}`}
+          </OutlineText>
         </View>
 
         <Animated.View style={[styles.meterStage, shakeStyle]}>
@@ -375,53 +376,60 @@ const styles = StyleSheet.create({
     ...StyleSheet.absoluteFill,
     backgroundColor: '#FFFFFF',
   },
-  brand: {
-    fontSize: 28,
-    letterSpacing: 1,
-  },
-  bigScore: {
-    marginTop: 6,
-    fontSize: 56,
-    lineHeight: 60,
-  },
-  hudRow: {
-    marginTop: 10,
+  topRow: {
     width: '100%',
     flexDirection: 'row',
-    justifyContent: 'center',
-    gap: 12,
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    gap: 10,
   },
-  chip: {
-    minWidth: 96,
-    borderRadius: 16,
-    borderWidth: 3,
-    borderColor: GameColors.ink,
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    alignItems: 'center',
-    backgroundColor: GameColors.panel,
-  },
-  chipGreen: {
-    borderBottomWidth: 6,
-    borderColor: GameColors.bubbleDark,
-    backgroundColor: '#E8FFD9',
-  },
-  chipGold: {
-    borderBottomWidth: 6,
-    borderColor: '#E0A800',
-    backgroundColor: '#FFF4C2',
-  },
-  chipLabel: {
-    fontFamily: GameFonts.soft,
-    fontSize: 11,
+  brand: {
+    fontSize: 26,
     letterSpacing: 1,
+    flexShrink: 1,
+  },
+  bestPill: {
+    marginTop: 2,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 12,
+    borderWidth: 2,
+    borderColor: GameColors.ink,
+    backgroundColor: '#FFF4C2',
+    alignItems: 'center',
+    minWidth: 58,
+  },
+  bestLabel: {
+    fontFamily: GameFonts.soft,
+    fontSize: 9,
+    letterSpacing: 0.8,
     color: GameColors.panelInk,
   },
-  chipValue: {
+  bestValue: {
     fontFamily: GameFonts.body,
-    fontSize: 22,
+    fontSize: 14,
     color: GameColors.ink,
-    marginTop: 1,
+    lineHeight: 16,
+  },
+  statsBlock: {
+    marginTop: 8,
+    alignItems: 'center',
+  },
+  bigScore: {
+    fontSize: 58,
+    lineHeight: 62,
+  },
+  ptsLabel: {
+    marginTop: -4,
+    fontFamily: GameFonts.body,
+    fontSize: 18,
+    letterSpacing: 2,
+    color: GameColors.ink,
+  },
+  levelText: {
+    marginTop: 4,
+    fontSize: 22,
+    letterSpacing: 1,
   },
   meterStage: {
     flex: 1,
