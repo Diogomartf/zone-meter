@@ -10,19 +10,24 @@ import Animated, {
   type SharedValue,
 } from 'react-native-reanimated';
 
-import { GameColors, Gradients } from '@/constants/gameTheme';
-import type { RoundConfig } from '@/game/types';
+import { GameColors } from '@/constants/gameTheme';
+import type { SkinDef } from '@/game/skins';
 
 type Props = {
   fill: SharedValue<number>;
-  round: RoundConfig;
+  /** Live zone center 0–1 */
+  zoneTarget: SharedValue<number>;
+  /** Live zone half-width 0–1 */
+  zoneHalf: SharedValue<number>;
+  ghostStop?: number | null;
+  skin: SkinDef;
 };
 
-const METER_H = 340;
-const METER_W = 108;
-const INNER_H = METER_H - 20;
+export const METER_H = 340;
+export const METER_W = 108;
+export const INNER_H = METER_H - 20;
 
-function VerticalMeterComponent({ fill, round }: Props) {
+function VerticalMeterComponent({ fill, zoneTarget, zoneHalf, ghostStop, skin }: Props) {
   const wobble = useSharedValue(0);
 
   useEffect(() => {
@@ -37,35 +42,58 @@ function VerticalMeterComponent({ fill, round }: Props) {
     height: Math.max(14, fill.value * INNER_H),
   }));
 
-  // One surface animation only — cheaper than multi-blob drivers
   const surfaceStyle = useAnimatedStyle(() => ({
     transform: [{ translateY: (wobble.value - 0.5) * 4 }],
   }));
 
-  const zoneBottom = (round.target - round.zoneHalf) * INNER_H;
-  const zoneHeight = Math.max(10, round.zoneHalf * 2 * INNER_H);
-  const markerBottom = 10 + round.target * INNER_H;
+  const zoneStyle = useAnimatedStyle(() => {
+    const half = zoneHalf.value;
+    const bottom = (zoneTarget.value - half) * INNER_H;
+    const height = Math.max(10, half * 2 * INNER_H);
+    return { bottom, height };
+  });
+
+  const markerStyle = useAnimatedStyle(() => ({
+    bottom: 10 + zoneTarget.value * INNER_H - 12,
+  }));
 
   return (
     <View style={styles.wrap}>
-      <View style={[styles.markerRow, { bottom: markerBottom - 12 }]}>
+      <Animated.View style={[styles.markerRow, markerStyle]}>
         <View style={styles.flagTip} />
-      </View>
+      </Animated.View>
 
-      <View style={styles.pipeCap} />
-      <View style={styles.shell}>
+      <View style={[styles.pipeCap, { backgroundColor: skin.shell }]} />
+      <View style={[styles.shell, { backgroundColor: skin.shell }]}>
         <View style={styles.shellLip} />
         <View style={styles.glass}>
-          <LinearGradient
-            colors={[...Gradients.zone]}
-            locations={[...Gradients.zoneStops]}
-            style={[styles.zone, { bottom: zoneBottom, height: zoneHeight }]}
-          />
+          <Animated.View style={[styles.zoneWrap, zoneStyle]}>
+            <LinearGradient
+              colors={[
+                'rgba(255,75,75,0)',
+                'rgba(255,75,75,0.45)',
+                'rgba(255,45,45,0.95)',
+                'rgba(255,75,75,0.45)',
+                'rgba(255,75,75,0)',
+              ]}
+              locations={[0, 0.22, 0.5, 0.78, 1]}
+              style={StyleSheet.absoluteFill}
+            />
+          </Animated.View>
+
+          {ghostStop != null ? (
+            <View
+              style={[
+                styles.ghost,
+                { bottom: Math.max(0, ghostStop * INNER_H - 2) },
+              ]}
+            />
+          ) : null}
 
           <Animated.View style={[styles.liquidWrap, liquidStyle]}>
             <LinearGradient
-              colors={[...Gradients.liquid]}
-              locations={[...Gradients.liquidStops]}
+              colors={[...skin.liquid]}
+              locations={[0, 0.12, 0.4, 0.72, 1]}
               style={styles.fill}
             />
             <View style={styles.blobA} />
@@ -74,7 +102,7 @@ function VerticalMeterComponent({ fill, round }: Props) {
           </Animated.View>
         </View>
       </View>
-      <View style={styles.pipeBase} />
+      <View style={[styles.pipeBase, { backgroundColor: skin.shellDark }]} />
     </View>
   );
 }
@@ -92,7 +120,6 @@ const styles = StyleSheet.create({
     width: METER_W + 18,
     height: 22,
     borderRadius: 14,
-    backgroundColor: GameColors.meterShell,
     borderWidth: 4,
     borderColor: GameColors.ink,
     marginBottom: -8,
@@ -102,7 +129,6 @@ const styles = StyleSheet.create({
     width: METER_W,
     height: METER_H,
     borderRadius: 28,
-    backgroundColor: GameColors.meterShell,
     borderWidth: 4,
     borderColor: GameColors.ink,
     padding: 10,
@@ -125,10 +151,21 @@ const styles = StyleSheet.create({
     borderWidth: 3,
     borderColor: GameColors.ink,
   },
-  zone: {
+  zoneWrap: {
     position: 'absolute',
     left: 0,
     right: 0,
+  },
+  ghost: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    height: 4,
+    backgroundColor: 'rgba(255,255,255,0.75)',
+    borderTopWidth: 1,
+    borderBottomWidth: 1,
+    borderColor: GameColors.ink,
+    zIndex: 4,
   },
   liquidWrap: {
     position: 'absolute',
@@ -151,7 +188,7 @@ const styles = StyleSheet.create({
     width: 26,
     height: 30,
     borderRadius: 16,
-    backgroundColor: 'rgba(200,255,61,0.4)',
+    backgroundColor: 'rgba(255,255,255,0.28)',
   },
   blobB: {
     position: 'absolute',
@@ -160,7 +197,7 @@ const styles = StyleSheet.create({
     width: 18,
     height: 22,
     borderRadius: 12,
-    backgroundColor: 'rgba(0,194,168,0.35)',
+    backgroundColor: 'rgba(255,255,255,0.18)',
   },
   surface: {
     position: 'absolute',
@@ -168,7 +205,7 @@ const styles = StyleSheet.create({
     right: 0,
     top: 0,
     height: 14,
-    backgroundColor: 'rgba(233,255,224,0.75)',
+    backgroundColor: 'rgba(255,255,255,0.55)',
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
   },
@@ -196,7 +233,6 @@ const styles = StyleSheet.create({
     height: 18,
     marginTop: -6,
     borderRadius: 10,
-    backgroundColor: GameColors.meterShellDark,
     borderWidth: 4,
     borderColor: GameColors.ink,
   },
