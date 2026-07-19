@@ -1,11 +1,11 @@
 {
   "expo": {
-    "name": "agent",
-    "slug": "agent",
+    "name": "Zone Meter",
+    "slug": "zone-meter",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
-    "scheme": "agent",
+    "scheme": "zonemeter",
     "userInterfaceStyle": "automatic",
     "ios": {
       "icon": "./assets/expo.icon"
