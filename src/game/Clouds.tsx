@@ -54,10 +54,9 @@ function CloudBlob({
 export function Clouds() {
   return (
     <View pointerEvents="none" style={StyleSheet.absoluteFill}>
-      <CloudBlob top={78} left={-8} scale={1.05} drift={16} duration={14000} opacity={0.9} />
-      <CloudBlob top={118} left={200} scale={1.25} drift={22} duration={16000} opacity={0.95} />
-      <CloudBlob top={168} left={54} scale={0.78} drift={14} duration={12000} opacity={0.85} />
-      <CloudBlob top={210} left={250} scale={0.7} drift={12} duration={15000} opacity={0.8} />
+      <CloudBlob top={52} left={-8} scale={0.95} drift={16} duration={14000} opacity={0.9} />
+      <CloudBlob top={78} left={200} scale={1.1} drift={22} duration={16000} opacity={0.95} />
+      <CloudBlob top={108} left={40} scale={0.72} drift={14} duration={12000} opacity={0.85} />
     </View>
   );
 }

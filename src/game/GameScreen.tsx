@@ -718,6 +718,9 @@ const styles = StyleSheet.create({
     fontSize: 48,
     lineHeight: 52,
     color: GameColors.white,
+    textShadowColor: 'rgba(26,28,44,0.35)',
+    textShadowOffset: { width: 0, height: 2 },
+    textShadowRadius: 0,
   },
   metaLine: {
     fontFamily: GameFonts.body,
