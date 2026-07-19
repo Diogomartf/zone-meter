@@ -45,6 +45,7 @@ export function GameScreen() {
   const roundRef = useRef(round);
   const scoreRef = useRef(0);
   const highScoreRef = useRef(0);
+  const lockingTap = useRef(false);
 
   useEffect(() => {
     phaseRef.current = phase;
@@ -157,21 +158,33 @@ export function GameScreen() {
   );
 
   const onTap = () => {
+    // Ignore double-fires while a stop/start is resolving
+    if (lockingTap.current) return;
+
     if (phaseRef.current === 'ready') {
+      lockingTap.current = true;
       void gameHaptics.next();
       startFill();
+      lockingTap.current = false;
       return;
     }
 
     if (phaseRef.current === 'filling') {
+      lockingTap.current = true;
       cancelAnimation(fill);
+      isFilling.value = 0;
       play('tap');
       void gameHaptics.stop();
       finishRound(fill.value);
+      // Unlock on next frame so result-phase taps still work
+      requestAnimationFrame(() => {
+        lockingTap.current = false;
+      });
       return;
     }
 
     if (phaseRef.current === 'result') {
+      lockingTap.current = true;
       void gameHaptics.next();
       const prevTarget = roundRef.current.target;
       const next = makeRound(roundRef.current.level + 1, prevTarget);
@@ -180,10 +193,12 @@ export function GameScreen() {
       fill.value = 0;
       setOutcome(null);
       startFill();
+      lockingTap.current = false;
       return;
     }
 
     if (phaseRef.current === 'gameover') {
+      lockingTap.current = true;
       void gameHaptics.next();
       const next = makeRound(1);
       setRound(next);
@@ -194,6 +209,7 @@ export function GameScreen() {
       setIsNewBest(false);
       fill.value = 0;
       startFill();
+      lockingTap.current = false;
     }
   };
 
@@ -213,9 +229,9 @@ export function GameScreen() {
   const feedback = showingResult
     ? `${outcome!.label.toUpperCase()}!`
     : phase === 'ready'
-      ? 'TAP TO START'
+      ? 'TAP ANYWHERE'
       : phase === 'filling'
-        ? 'TAP TO STOP'
+        ? 'TAP ANYWHERE TO STOP'
         : 'KEEP GOING';
 
   const feedbackColor =
@@ -231,7 +247,7 @@ export function GameScreen() {
     phase === 'gameover' ? 'RETRY' : phase === 'ready' ? 'PLAY' : phase === 'result' ? 'NEXT' : 'STOP';
 
   return (
-    <Pressable style={styles.root} onPress={onTap}>
+    <View style={styles.root}>
       <LinearGradient
         colors={[...Gradients.sky]}
         locations={[...Gradients.skyStops]}
@@ -249,7 +265,9 @@ export function GameScreen() {
 
       <Animated.View style={[styles.flash, flashStyle]} />
 
-      <View style={[styles.content, { paddingTop: insets.top + 8, paddingBottom: insets.bottom + 16 }]}>
+      <View
+        style={[styles.content, { paddingTop: insets.top + 8, paddingBottom: insets.bottom + 16 }]}
+        pointerEvents="none">
         <View style={styles.topRow}>
           <Text style={styles.brand}>ZONE METER</Text>
           <View style={styles.bestPill}>
@@ -293,7 +311,17 @@ export function GameScreen() {
           </View>
         </View>
       </View>
-    </Pressable>
+
+      {/* Full-screen hit target — tap anywhere (meter, sky, button) to stop/start */}
+      <Pressable
+        style={styles.hitLayer}
+        onPressIn={onTap}
+        accessibilityRole="button"
+        accessibilityLabel={
+          phase === 'filling' ? 'Tap anywhere to stop the meter' : ctaLabel
+        }
+      />
+    </View>
   );
 }
 
@@ -309,10 +337,19 @@ const styles = StyleSheet.create({
     top: 0,
     bottom: 0,
   },
+  hitLayer: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    top: 0,
+    bottom: 0,
+    zIndex: 20,
+  },
   content: {
     flex: 1,
     paddingHorizontal: 20,
     alignItems: 'center',
+    zIndex: 1,
   },
   cloud: {
     position: 'absolute',
