@@ -9,16 +9,14 @@
     "userInterfaceStyle": "automatic",
     "ios": {
       "supportsTablet": false,
-      "bundleIdentifier": "com.diogomartf.zonemeter",
-      "icon": "./assets/expo.icon"
+      "bundleIdentifier": "com.diogomartf.zonemeter"
     },
     "android": {
       "package": "com.diogomartf.zonemeter",
       "adaptiveIcon": {
-        "backgroundColor": "#4EC0CA",
+        "backgroundColor": "#3B9EFF",
         "foregroundImage": "./assets/images/android-icon-foreground.png",
-        "backgroundImage": "./assets/images/android-icon-background.png",
-        "monochromeImage": "./assets/images/android-icon-monochrome.png"
+        "backgroundImage": "./assets/images/android-icon-background.png"
       },
       "predictiveBackGestureEnabled": false
     },
@@ -32,9 +30,9 @@
       [
         "expo-splash-screen",
         {
-          "backgroundColor": "#4EC0CA",
+          "backgroundColor": "#3B9EFF",
           "image": "./assets/images/splash-icon.png",
-          "imageWidth": 76
+          "imageWidth": 200
         }
       ],
       "expo-audio"
