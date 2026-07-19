@@ -26,6 +26,11 @@ npm-debug.*
 yarn-debug.*
 yarn-error.*
 
+# package managers — this repo uses Bun
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
+
 # macOS
 .DS_Store
 *.pem
