@@ -1,3 +1,4 @@
+import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
@@ -17,6 +18,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { GameColors, GameFonts, Gradients } from '@/constants/gameTheme';
 import { Clouds } from '@/game/Clouds';
 import { Hearts } from '@/game/Hearts';
+
+const LOGO = require('@/assets/images/zone-meter-logo.png');
 import { gameHaptics } from '@/game/haptics';
 import { createRng, makeRound } from '@/game/levels';
 import { comboMultiplier, scoreFill, STARTING_LIVES } from '@/game/scoring';
@@ -461,8 +464,14 @@ export function GameScreen() {
         pointerEvents="box-none">
         <View style={styles.topRow} pointerEvents="box-none">
           <View pointerEvents="none">
-            <Text style={styles.brand}>ZONE METER</Text>
-            <Hearts lives={lives} max={STARTING_LIVES} />
+            {phase !== 'ready' ? (
+              <>
+                <Image source={LOGO} style={styles.logoHud} contentFit="contain" />
+                <Hearts lives={lives} max={STARTING_LIVES} />
+              </>
+            ) : (
+              <View style={styles.logoHudPlaceholder} />
+            )}
           </View>
 
           <View style={styles.topRight} pointerEvents="box-none">
@@ -486,16 +495,22 @@ export function GameScreen() {
         </View>
 
         <View style={styles.statsBlock} pointerEvents="none">
-          <Text style={styles.bigScore}>{score}</Text>
-          <Text style={styles.metaLine}>LVL {round.level}</Text>
-          {combo > 0 && phase !== 'ready' && phase !== 'gameover' ? (
-            <Animated.View style={[styles.comboBadge, comboBadgeStyle]}>
-              <Text style={styles.comboBadgeLabel}>COMBO</Text>
-              <Text style={styles.comboBadgeValue}>
-                x{combo} · {comboMultiplier(combo).toFixed(2)}
-              </Text>
-            </Animated.View>
-          ) : null}
+          {phase === 'ready' ? (
+            <Image source={LOGO} style={styles.logoHero} contentFit="contain" />
+          ) : (
+            <>
+              <Text style={styles.bigScore}>{score}</Text>
+              <Text style={styles.metaLine}>LVL {round.level}</Text>
+              {combo > 0 && phase !== 'gameover' ? (
+                <Animated.View style={[styles.comboBadge, comboBadgeStyle]}>
+                  <Text style={styles.comboBadgeLabel}>COMBO</Text>
+                  <Text style={styles.comboBadgeValue}>
+                    x{combo} · {comboMultiplier(combo).toFixed(2)}
+                  </Text>
+                </Animated.View>
+              ) : null}
+            </>
+          )}
         </View>
 
         <View style={styles.meterStage}>
@@ -624,10 +639,19 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
   },
   topRight: { alignItems: 'flex-end', gap: 6 },
-  brand: {
-    fontFamily: GameFonts.display,
-    fontSize: 26,
-    color: GameColors.lemon,
+  logoHud: {
+    width: 128,
+    height: 70,
+    marginLeft: -6,
+  },
+  logoHudPlaceholder: {
+    width: 128,
+    height: 8,
+  },
+  logoHero: {
+    width: 280,
+    height: 168,
+    marginTop: 4,
   },
   iconBtn: {
     width: 36,
