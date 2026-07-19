@@ -196,8 +196,8 @@ export function GameScreen() {
   }));
 
   const feedback =
-    phase === 'gameover' || (outcome && phase === 'result')
-      ? `${outcome!.label.toUpperCase()}!`
+    outcome && (phase === 'result' || phase === 'gameover')
+      ? `${outcome.label.toUpperCase()}!`
       : phase === 'ready'
         ? 'TAP TO START'
         : phase === 'filling'
