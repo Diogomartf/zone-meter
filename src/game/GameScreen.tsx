@@ -1,4 +1,3 @@
-import * as Haptics from 'expo-haptics';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
@@ -6,6 +5,7 @@ import Animated, {
   cancelAnimation,
   Easing,
   runOnJS,
+  useAnimatedReaction,
   useAnimatedStyle,
   useSharedValue,
   withSequence,
@@ -15,6 +15,7 @@ import Animated, {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { GameColors, GameFonts } from '@/constants/gameTheme';
+import { gameHaptics } from '@/game/haptics';
 import { loadHighScore, saveHighScore } from '@/game/highScore';
 import { makeRound, scoreFill } from '@/game/levels';
 import { OutlineText } from '@/game/OutlineText';
@@ -39,6 +40,8 @@ export function GameScreen() {
   const shakeX = useSharedValue(0);
   const pop = useSharedValue(1);
   const flash = useSharedValue(0);
+  const zoneLow = useSharedValue(round.target - round.zoneHalf);
+  const isFilling = useSharedValue(0);
   const phaseRef = useRef<Phase>('ready');
   const roundRef = useRef(round);
   const scoreRef = useRef(0);
@@ -50,7 +53,8 @@ export function GameScreen() {
 
   useEffect(() => {
     roundRef.current = round;
-  }, [round]);
+    zoneLow.value = round.target - round.zoneHalf;
+  }, [round, zoneLow]);
 
   useEffect(() => {
     scoreRef.current = score;
@@ -92,9 +96,11 @@ export function GameScreen() {
         withTiming(0, { duration: 220 }),
       );
 
+      isFilling.value = 0;
+      void gameHaptics.result(result.label);
+
       if (result.result === 'miss') {
         play('miss');
-        void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
         shake();
         const finalScore = scoreRef.current;
         const previousBest = highScoreRef.current;
@@ -109,17 +115,15 @@ export function GameScreen() {
 
       if (result.result === 'perfect') {
         play('perfect');
-        void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       } else {
         play('zone');
-        void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
       }
 
       setScore((s) => s + result.points);
       setPhase('result');
       phaseRef.current = 'result';
     },
-    [flash, play],
+    [flash, isFilling, play],
   );
 
   const startFill = useCallback(() => {
@@ -127,8 +131,11 @@ export function GameScreen() {
     setOutcome(null);
     setPhase('filling');
     phaseRef.current = 'filling';
+    isFilling.value = 1;
+    zoneLow.value = current.target - current.zoneHalf;
     fill.value = 0;
     play('start');
+    void gameHaptics.start();
 
     fill.value = withTiming(
       1,
@@ -139,10 +146,26 @@ export function GameScreen() {
         }
       },
     );
-  }, [fill, finishRound, play]);
+  }, [fill, finishRound, isFilling, play, zoneLow]);
+
+  const onZoneEnter = useCallback(() => {
+    void gameHaptics.zoneEnter();
+  }, []);
+
+  useAnimatedReaction(
+    () => fill.value,
+    (value, prev) => {
+      if (isFilling.value !== 1 || prev == null) return;
+      if (prev < zoneLow.value && value >= zoneLow.value) {
+        runOnJS(onZoneEnter)();
+      }
+    },
+    [onZoneEnter],
+  );
 
   const onTap = () => {
     if (phaseRef.current === 'ready') {
+      void gameHaptics.next();
       startFill();
       return;
     }
@@ -150,12 +173,13 @@ export function GameScreen() {
     if (phaseRef.current === 'filling') {
       cancelAnimation(fill);
       play('tap');
-      void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+      void gameHaptics.stop();
       finishRound(fill.value);
       return;
     }
 
     if (phaseRef.current === 'result') {
+      void gameHaptics.next();
       const nextLevel = roundRef.current.level + 1;
       const next = makeRound(nextLevel);
       setRound(next);
@@ -167,6 +191,7 @@ export function GameScreen() {
     }
 
     if (phaseRef.current === 'gameover') {
+      void gameHaptics.next();
       const next = makeRound(1);
       setRound(next);
       roundRef.current = next;
