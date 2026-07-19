@@ -1,4 +1,4 @@
-import { StyleSheet, Text, View, type StyleProp, type TextStyle } from 'react-native';
+import { StyleSheet, Text, type StyleProp, type TextStyle } from 'react-native';
 
 import { GameColors, GameFonts } from '@/constants/gameTheme';
 
@@ -6,48 +6,32 @@ type Props = {
   children: string;
   style?: StyleProp<TextStyle>;
   color?: string;
+  /** Kept for API compat — soft shadow only, no stacked black glyphs */
   outlineColor?: string;
   outlineWidth?: number;
 };
 
-const OFFSETS = [
-  [-1, -1],
-  [0, -1],
-  [1, -1],
-  [-1, 0],
-  [1, 0],
-  [-1, 1],
-  [0, 1],
-  [1, 1],
-] as const;
-
+/** Punchy game text without black outline ghost layers. */
 export function OutlineText({
   children,
   style,
   color = GameColors.white,
-  outlineColor = GameColors.ink,
   outlineWidth = 2,
 }: Props) {
   return (
-    <View>
-      {OFFSETS.map(([x, y], i) => (
-        <Text
-          key={i}
-          style={[
-            styles.base,
-            style,
-            {
-              position: 'absolute',
-              left: x * outlineWidth,
-              top: y * outlineWidth,
-              color: outlineColor,
-            },
-          ]}>
-          {children}
-        </Text>
-      ))}
-      <Text style={[styles.base, style, { color }]}>{children}</Text>
-    </View>
+    <Text
+      style={[
+        styles.base,
+        style,
+        {
+          color,
+          textShadowColor: 'rgba(0,0,0,0.28)',
+          textShadowOffset: { width: 0, height: Math.max(1, outlineWidth - 1) },
+          textShadowRadius: outlineWidth + 1,
+        },
+      ]}>
+      {children}
+    </Text>
   );
 }
 

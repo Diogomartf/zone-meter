@@ -65,14 +65,14 @@ export function VerticalMeter({ fill, round }: Props) {
       <View style={styles.shell}>
         <View style={styles.shellLip} />
         <View style={styles.glass}>
-          {/* Single soft gradient zone band — one line, hot center */}
+          {/* Single red gradient zone band */}
           <LinearGradient
             colors={[
-              'rgba(255,225,74,0)',
-              'rgba(255,225,74,0.55)',
-              'rgba(255,106,61,0.95)',
-              'rgba(255,225,74,0.55)',
-              'rgba(255,225,74,0)',
+              'rgba(255,75,75,0)',
+              'rgba(255,75,75,0.45)',
+              'rgba(255,45,45,0.95)',
+              'rgba(255,75,75,0.45)',
+              'rgba(255,75,75,0)',
             ]}
             locations={[0, 0.22, 0.5, 0.78, 1]}
             style={[
@@ -260,7 +260,7 @@ const styles = StyleSheet.create({
     borderRightWidth: 16,
     borderTopColor: 'transparent',
     borderBottomColor: 'transparent',
-    borderRightColor: GameColors.zoneHot,
+    borderRightColor: GameColors.perfect,
     alignSelf: 'flex-end',
   },
   pipeBase: {

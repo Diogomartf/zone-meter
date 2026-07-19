@@ -280,13 +280,11 @@ export function GameScreen() {
         </View>
 
         <View style={styles.statsBlock}>
-          <OutlineText style={styles.bigScore} color={GameColors.white} outlineWidth={4}>
+          <OutlineText style={styles.bigScore} color={GameColors.white} outlineWidth={3}>
             {String(score)}
           </OutlineText>
           <Text style={styles.ptsLabel}>PTS</Text>
-          <OutlineText style={styles.levelText} color={GameColors.lemon} outlineWidth={2}>
-            {`LEVEL ${round.level}`}
-          </OutlineText>
+          <Text style={styles.levelText}>{`LEVEL ${round.level}`}</Text>
         </View>
 
         <Animated.View style={[styles.meterStage, shakeStyle]}>
@@ -452,9 +450,11 @@ const styles = StyleSheet.create({
     color: GameColors.ink,
   },
   levelText: {
-    marginTop: 4,
-    fontSize: 22,
-    letterSpacing: 1,
+    marginTop: 6,
+    fontFamily: GameFonts.body,
+    fontSize: 20,
+    letterSpacing: 1.5,
+    color: GameColors.ink,
   },
   meterStage: {
     flex: 1,
