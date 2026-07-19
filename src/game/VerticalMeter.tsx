@@ -8,31 +8,34 @@ import type { RoundConfig } from '@/game/types';
 type Props = {
   fill: SharedValue<number>;
   round: RoundConfig;
-  frozen?: boolean;
 };
 
-const METER_H = 360;
-const METER_W = 92;
+const METER_H = 340;
+const METER_W = 108;
 
 export function VerticalMeter({ fill, round }: Props) {
   const liquidStyle = useAnimatedStyle(() => ({
-    height: Math.max(8, fill.value * METER_H),
+    height: Math.max(10, fill.value * (METER_H - 20)),
   }));
 
-  const zoneBottom = (round.target - round.zoneHalf) * METER_H;
-  const zoneHeight = round.zoneHalf * 2 * METER_H;
-  const perfectBottom = (round.target - round.perfectHalf) * METER_H;
-  const perfectHeight = Math.max(6, round.perfectHalf * 2 * METER_H);
-  const markerBottom = round.target * METER_H;
+  const zoneBottom = (round.target - round.zoneHalf) * (METER_H - 20);
+  const zoneHeight = round.zoneHalf * 2 * (METER_H - 20);
+  const perfectBottom = (round.target - round.perfectHalf) * (METER_H - 20);
+  const perfectHeight = Math.max(8, round.perfectHalf * 2 * (METER_H - 20));
+  const markerBottom = 10 + round.target * (METER_H - 20);
 
   return (
     <View style={styles.wrap}>
-      <View style={[styles.markerRow, { bottom: markerBottom - 10 }]}>
-        <View style={styles.triangle} />
-        <View style={styles.markerLine} />
+      <View style={[styles.markerRow, { bottom: markerBottom - 14 }]}>
+        <View style={styles.flag}>
+          <View style={styles.flagPole} />
+          <View style={styles.flagTip} />
+        </View>
       </View>
 
+      <View style={styles.pipeCap} />
       <View style={styles.shell}>
+        <View style={styles.shellLip} />
         <View style={styles.glass}>
           <View
             style={[
@@ -56,42 +59,64 @@ export function VerticalMeter({ fill, round }: Props) {
           <Animated.View style={[styles.liquidWrap, liquidStyle]}>
             <LinearGradient
               colors={[GameColors.liquidHigh, GameColors.liquidMid, GameColors.liquidLow]}
-              locations={[0, 0.45, 1]}
+              locations={[0, 0.4, 1]}
               style={StyleSheet.absoluteFill}
             />
             <View style={styles.liquidShine} />
+            <View style={styles.liquidBubbleA} />
+            <View style={styles.liquidBubbleB} />
             <View style={styles.liquidTop} />
           </Animated.View>
         </View>
       </View>
+      <View style={styles.pipeBase} />
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   wrap: {
-    width: METER_W + 48,
-    height: METER_H + 24,
+    width: METER_W + 56,
+    height: METER_H + 36,
     alignItems: 'center',
     justifyContent: 'flex-end',
+  },
+  pipeCap: {
+    width: METER_W + 18,
+    height: 22,
+    borderRadius: 14,
+    backgroundColor: GameColors.meterShell,
+    borderWidth: 4,
+    borderColor: GameColors.ink,
+    marginBottom: -8,
+    zIndex: 2,
   },
   shell: {
     width: METER_W,
     height: METER_H,
-    borderRadius: METER_W / 2,
+    borderRadius: 28,
     backgroundColor: GameColors.meterShell,
-    padding: 8,
-    shadowColor: '#000',
-    shadowOpacity: 0.25,
-    shadowRadius: 16,
-    shadowOffset: { width: 0, height: 10 },
-    elevation: 10,
+    borderWidth: 4,
+    borderColor: GameColors.ink,
+    padding: 10,
+    overflow: 'hidden',
+  },
+  shellLip: {
+    position: 'absolute',
+    left: 10,
+    top: 18,
+    bottom: 18,
+    width: 14,
+    borderRadius: 999,
+    backgroundColor: 'rgba(255,255,255,0.22)',
   },
   glass: {
     flex: 1,
-    borderRadius: (METER_W - 16) / 2,
+    borderRadius: 20,
     overflow: 'hidden',
-    backgroundColor: GameColors.meterGlass,
+    backgroundColor: GameColors.meterInner,
+    borderWidth: 3,
+    borderColor: GameColors.ink,
   },
   liquidWrap: {
     position: 'absolute',
@@ -103,62 +128,91 @@ const styles = StyleSheet.create({
   liquidShine: {
     position: 'absolute',
     left: 10,
-    top: 8,
-    bottom: 8,
+    top: 10,
+    bottom: 10,
     width: 12,
     borderRadius: 999,
-    backgroundColor: 'rgba(255,255,255,0.28)',
+    backgroundColor: 'rgba(255,255,255,0.35)',
+  },
+  liquidBubbleA: {
+    position: 'absolute',
+    right: 16,
+    bottom: 28,
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: 'rgba(255,255,255,0.45)',
+  },
+  liquidBubbleB: {
+    position: 'absolute',
+    right: 28,
+    bottom: 54,
+    width: 7,
+    height: 7,
+    borderRadius: 4,
+    backgroundColor: 'rgba(255,255,255,0.35)',
   },
   liquidTop: {
     position: 'absolute',
     left: 0,
     right: 0,
     top: 0,
-    height: 10,
-    backgroundColor: 'rgba(255,255,255,0.35)',
+    height: 12,
+    backgroundColor: 'rgba(255,255,255,0.4)',
   },
   zone: {
     position: 'absolute',
     left: 0,
     right: 0,
-    backgroundColor: 'rgba(250, 204, 21, 0.45)',
-    borderTopWidth: 2,
-    borderBottomWidth: 2,
-    borderColor: GameColors.zoneEdge,
+    backgroundColor: 'rgba(255, 225, 74, 0.55)',
+    borderTopWidth: 3,
+    borderBottomWidth: 3,
+    borderColor: GameColors.white,
   },
   perfect: {
     position: 'absolute',
     left: 0,
     right: 0,
     backgroundColor: GameColors.perfect,
-    opacity: 0.95,
+    borderTopWidth: 2,
+    borderBottomWidth: 2,
+    borderColor: GameColors.ink,
   },
   markerRow: {
     position: 'absolute',
     right: 0,
-    width: 40,
-    height: 20,
-    alignItems: 'flex-start',
-    justifyContent: 'center',
-    zIndex: 2,
+    width: 46,
+    height: 28,
+    zIndex: 3,
   },
-  triangle: {
-    width: 0,
-    height: 0,
-    marginLeft: 4,
-    borderTopWidth: 8,
-    borderBottomWidth: 8,
-    borderRightWidth: 12,
-    borderTopColor: 'transparent',
-    borderBottomColor: 'transparent',
-    borderRightColor: GameColors.ink,
+  flag: {
+    flexDirection: 'row',
+    alignItems: 'center',
   },
-  markerLine: {
-    position: 'absolute',
-    left: 16,
-    width: 18,
-    height: 3,
+  flagPole: {
+    width: 5,
+    height: 28,
     backgroundColor: GameColors.ink,
     borderRadius: 2,
+  },
+  flagTip: {
+    width: 0,
+    height: 0,
+    borderTopWidth: 10,
+    borderBottomWidth: 10,
+    borderLeftWidth: 18,
+    borderTopColor: 'transparent',
+    borderBottomColor: 'transparent',
+    borderLeftColor: GameColors.perfect,
+    marginLeft: -1,
+  },
+  pipeBase: {
+    width: METER_W + 26,
+    height: 18,
+    marginTop: -6,
+    borderRadius: 10,
+    backgroundColor: GameColors.meterShellDark,
+    borderWidth: 4,
+    borderColor: GameColors.ink,
   },
 });
