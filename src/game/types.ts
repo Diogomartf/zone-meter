@@ -12,8 +12,11 @@ export type RoundConfig = {
   fillMs: number;
 };
 
+export type RoundLabel = 'Perfect' | 'Great' | 'Good' | 'Nice' | 'Miss';
+
 export type RoundOutcome = {
   result: RoundResult;
+  label: RoundLabel;
   fill: number;
   points: number;
   distance: number;

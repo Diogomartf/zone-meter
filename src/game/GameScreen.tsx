@@ -196,26 +196,24 @@ export function GameScreen() {
   }));
 
   const feedback =
-    phase === 'gameover'
-      ? 'MISS!'
-      : outcome?.result === 'perfect'
-        ? 'PERFECT!'
-        : outcome?.result === 'zone'
-          ? 'IN THE ZONE!'
-          : phase === 'ready'
-            ? 'TAP TO START'
-            : phase === 'filling'
-              ? 'TAP TO STOP'
-              : 'TAP FOR NEXT';
+    phase === 'gameover' || (outcome && phase === 'result')
+      ? `${outcome!.label.toUpperCase()}!`
+      : phase === 'ready'
+        ? 'TAP TO START'
+        : phase === 'filling'
+          ? 'TAP TO STOP'
+          : 'TAP FOR NEXT';
 
   const feedbackColor =
-    phase === 'gameover'
+    phase === 'gameover' || outcome?.result === 'miss'
       ? GameColors.scoreBad
-      : outcome?.result === 'perfect'
+      : outcome?.label === 'Perfect'
         ? GameColors.perfect
-        : outcome?.result === 'zone'
-          ? GameColors.scoreGood
-          : GameColors.ink;
+        : outcome?.label === 'Great'
+          ? '#EA580C'
+          : outcome?.result === 'zone'
+            ? GameColors.scoreGood
+            : GameColors.ink;
 
   return (
     <Pressable style={styles.root} onPress={onTap}>

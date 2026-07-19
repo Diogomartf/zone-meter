@@ -20,14 +20,15 @@ export function scoreFill(fill: number, round: RoundConfig): RoundOutcome {
   const distance = Math.abs(fill - round.target);
 
   if (distance <= round.perfectHalf) {
-    return { result: 'perfect', fill, points: 100, distance };
+    return { result: 'perfect', label: 'Perfect', fill, points: 100, distance };
   }
 
   if (distance <= round.zoneHalf) {
     const t = 1 - distance / round.zoneHalf;
     const points = Math.round(20 + t * 60);
-    return { result: 'zone', fill, points, distance };
+    const label = t >= 0.66 ? 'Great' : t >= 0.33 ? 'Good' : 'Nice';
+    return { result: 'zone', label, fill, points, distance };
   }
 
-  return { result: 'miss', fill, points: 0, distance };
+  return { result: 'miss', label: 'Miss', fill, points: 0, distance };
 }
