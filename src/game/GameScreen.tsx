@@ -173,7 +173,8 @@ export function GameScreen() {
 
     if (phaseRef.current === 'result') {
       void gameHaptics.next();
-      const next = makeRound(roundRef.current.level + 1);
+      const prevTarget = roundRef.current.target;
+      const next = makeRound(roundRef.current.level + 1, prevTarget);
       setRound(next);
       roundRef.current = next;
       fill.value = 0;
