@@ -28,11 +28,24 @@ import {
   setSoundMuted,
   todayKey,
 } from '@/game/storage';
-import type { PersistState, RoundConfig, RoundOutcome, SessionStats } from '@/game/types';
+import type {
+  PersistState,
+  RoundConfig,
+  RoundLabel,
+  RoundOutcome,
+  SessionStats,
+} from '@/game/types';
 import { useSounds } from '@/game/useSounds';
 import { VerticalMeter } from '@/game/VerticalMeter';
 
 type Phase = 'ready' | 'countdown' | 'filling' | 'result' | 'gameover';
+
+type Feedback = {
+  label: RoundLabel;
+  points: number;
+  combo: number;
+  comboGrew: boolean;
+};
 
 const emptyStats = (): SessionStats => ({
   attempts: 0,
@@ -42,6 +55,15 @@ const emptyStats = (): SessionStats => ({
   bestCombo: 0,
   coinsEarned: 0,
 });
+
+const LABEL_COLORS: Record<RoundLabel, string> = {
+  Perfect: '#FF3B4A',
+  Great: '#FF8A00',
+  Good: '#58CC02',
+  Nice: '#1CB0F6',
+  Close: '#FFC800',
+  Miss: '#6B7280',
+};
 
 export function GameScreen() {
   const insets = useSafeAreaInsets();
@@ -59,14 +81,16 @@ export function GameScreen() {
   const [countdown, setCountdown] = useState(3);
   const [dailyMode, setDailyMode] = useState(false);
   const [stats, setStats] = useState<SessionStats>(emptyStats);
-  const [callout, setCallout] = useState<string | null>(null);
+  const [feedback, setFeedback] = useState<Feedback | null>(null);
 
   const fill = useSharedValue(0);
   const zoneTarget = useSharedValue(round.target);
   const zoneHalf = useSharedValue(round.zoneHalf);
   const shakeX = useSharedValue(0);
   const meterX = useSharedValue(0);
-  const calloutOpacity = useSharedValue(0);
+  const feedbackOpacity = useSharedValue(0);
+  const feedbackScale = useSharedValue(0.7);
+  const comboPulse = useSharedValue(1);
   const flash = useSharedValue(0);
   const isFilling = useSharedValue(0);
 
@@ -109,12 +133,24 @@ export function GameScreen() {
     };
   }, []);
 
-  const showCallout = (text: string) => {
-    setCallout(text);
-    calloutOpacity.value = withSequence(
-      withTiming(1, { duration: 70 }),
-      withDelay(420, withTiming(0, { duration: 280 })),
+  const showFeedback = (next: Feedback) => {
+    setFeedback(next);
+    feedbackOpacity.value = 0;
+    feedbackScale.value = 0.55;
+    feedbackOpacity.value = withSequence(
+      withTiming(1, { duration: 90 }),
+      withDelay(520, withTiming(0, { duration: 260 })),
     );
+    feedbackScale.value = withSequence(
+      withTiming(1.18, { duration: 140, easing: Easing.out(Easing.cubic) }),
+      withTiming(1, { duration: 160, easing: Easing.inOut(Easing.quad) }),
+    );
+    if (next.comboGrew && next.combo > 0) {
+      comboPulse.value = withSequence(
+        withTiming(1.22, { duration: 120, easing: Easing.out(Easing.cubic) }),
+        withTiming(1, { duration: 180, easing: Easing.inOut(Easing.quad) }),
+      );
+    }
   };
 
   const endRun = useCallback(
@@ -137,16 +173,20 @@ export function GameScreen() {
   const finishRound = useCallback(
     (value: number) => {
       const current = roundRef.current;
-      const result = scoreFill(value, current, comboRef.current);
+      const prevCombo = comboRef.current;
+      const result = scoreFill(value, current, prevCombo);
       setOutcome(result);
       setCombo(result.combo);
       comboRef.current = result.combo;
       isFilling.value = 0;
       void gameHaptics.result(result.label === 'Close' ? 'Nice' : result.label);
 
-      const labelText =
-        result.points > 0 ? `${result.label.toUpperCase()}!  +${result.points}` : `${result.label.toUpperCase()}!`;
-      showCallout(labelText);
+      showFeedback({
+        label: result.label,
+        points: result.points,
+        combo: result.combo,
+        comboGrew: result.combo > prevCombo,
+      });
 
       flash.value = withSequence(
         withTiming(0.2, { duration: 50 }),
@@ -203,6 +243,8 @@ export function GameScreen() {
   const startFill = useCallback(() => {
     const current = roundRef.current;
     setOutcome(null);
+    setFeedback(null);
+    feedbackOpacity.value = 0;
     setPhase('filling');
     phaseRef.current = 'filling';
     isFilling.value = 1;
@@ -326,7 +368,8 @@ export function GameScreen() {
     comboRef.current = 0;
     setStats(emptyStats());
     setIsNewBest(false);
-    setCallout(null);
+    setFeedback(null);
+    feedbackOpacity.value = 0;
     beginRound(makeRound(1, { rng: rngRef.current }), false);
   };
 
@@ -369,9 +412,15 @@ export function GameScreen() {
   const flashStyle = useAnimatedStyle(() => ({
     opacity: flash.value,
   }));
-  const calloutStyle = useAnimatedStyle(() => ({
-    opacity: calloutOpacity.value,
-    transform: [{ translateY: (1 - calloutOpacity.value) * 8 }],
+  const feedbackStyle = useAnimatedStyle(() => ({
+    opacity: feedbackOpacity.value,
+    transform: [
+      { scale: feedbackScale.value },
+      { translateY: (1 - feedbackOpacity.value) * 12 },
+    ],
+  }));
+  const comboBadgeStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: comboPulse.value }],
   }));
 
   const accuracy =
@@ -438,16 +487,34 @@ export function GameScreen() {
 
         <View style={styles.statsBlock} pointerEvents="none">
           <Text style={styles.bigScore}>{score}</Text>
-          <Text style={styles.metaLine}>
-            LVL {round.level}
-            {combo > 0 ? `  ·  x${comboMultiplier(combo).toFixed(2)}` : ''}
-          </Text>
+          <Text style={styles.metaLine}>LVL {round.level}</Text>
+          {combo > 0 && phase !== 'ready' && phase !== 'gameover' ? (
+            <Animated.View style={[styles.comboBadge, comboBadgeStyle]}>
+              <Text style={styles.comboBadgeLabel}>COMBO</Text>
+              <Text style={styles.comboBadgeValue}>
+                x{combo} · {comboMultiplier(combo).toFixed(2)}
+              </Text>
+            </Animated.View>
+          ) : null}
         </View>
 
         <View style={styles.meterStage}>
-          {/* Side callout — doesn't steal vertical space */}
-          <Animated.View style={[styles.callout, calloutStyle]} pointerEvents="none">
-            {callout ? <Text style={styles.calloutText}>{callout}</Text> : null}
+          <Animated.View style={[styles.feedback, feedbackStyle]} pointerEvents="none">
+            {feedback ? (
+              <>
+                <Text style={[styles.feedbackLabel, { color: LABEL_COLORS[feedback.label] }]}>
+                  {feedback.label.toUpperCase()}!
+                </Text>
+                {feedback.points > 0 ? (
+                  <Text style={styles.feedbackPoints}>+{feedback.points}</Text>
+                ) : null}
+                {feedback.comboGrew && feedback.combo > 1 ? (
+                  <Text style={styles.feedbackCombo}>COMBO x{feedback.combo}</Text>
+                ) : feedback.comboGrew && feedback.combo === 1 ? (
+                  <Text style={styles.feedbackCombo}>COMBO START</Text>
+                ) : null}
+              </>
+            ) : null}
           </Animated.View>
 
           <Animated.View style={meterStyle}>
@@ -613,25 +680,67 @@ const styles = StyleSheet.create({
     fontSize: 15,
     color: GameColors.ink,
   },
+  comboBadge: {
+    marginTop: 6,
+    paddingHorizontal: 14,
+    paddingVertical: 5,
+    borderRadius: 999,
+    borderWidth: 2.5,
+    borderColor: GameColors.ink,
+    backgroundColor: GameColors.lemon,
+    alignItems: 'center',
+    minWidth: 110,
+  },
+  comboBadgeLabel: {
+    fontFamily: GameFonts.soft,
+    fontSize: 11,
+    color: GameColors.panelInk,
+    letterSpacing: 0.5,
+  },
+  comboBadgeValue: {
+    fontFamily: GameFonts.display,
+    fontSize: 18,
+    lineHeight: 22,
+    color: GameColors.ink,
+  },
   meterStage: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
     width: '100%',
   },
-  callout: {
+  feedback: {
     position: 'absolute',
-    right: 4,
-    top: '28%',
-    zIndex: 5,
-    maxWidth: 130,
+    left: 12,
+    right: 12,
+    top: '18%',
+    zIndex: 8,
+    alignItems: 'center',
   },
-  calloutText: {
+  feedbackLabel: {
     fontFamily: GameFonts.display,
+    fontSize: 44,
+    lineHeight: 48,
+    textAlign: 'center',
+    textShadowColor: 'rgba(255,255,255,0.85)',
+    textShadowOffset: { width: 0, height: 2 },
+    textShadowRadius: 0,
+  },
+  feedbackPoints: {
+    marginTop: 2,
+    fontFamily: GameFonts.body,
     fontSize: 22,
-    lineHeight: 26,
     color: GameColors.ink,
-    textAlign: 'right',
+  },
+  feedbackCombo: {
+    marginTop: 4,
+    fontFamily: GameFonts.display,
+    fontSize: 24,
+    lineHeight: 28,
+    color: GameColors.lemon,
+    textShadowColor: GameColors.ink,
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 0,
   },
   prompt: {
     fontFamily: GameFonts.body,
