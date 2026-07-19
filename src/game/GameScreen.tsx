@@ -191,11 +191,6 @@ export function GameScreen() {
         comboGrew: result.combo > prevCombo,
       });
 
-      flash.value = withSequence(
-        withTiming(0.2, { duration: 50 }),
-        withTiming(0, { duration: 160 }),
-      );
-
       setStats((s) => {
         const next: SessionStats = {
           ...s,
@@ -209,11 +204,6 @@ export function GameScreen() {
 
         if (result.costsLife) {
           play('miss');
-          shakeX.value = withSequence(
-            withTiming(-8, { duration: 35 }),
-            withTiming(8, { duration: 40 }),
-            withTiming(0, { duration: 35 }),
-          );
           const livesLeft = livesRef.current - 1;
           setLives(livesLeft);
           livesRef.current = livesLeft;
@@ -240,7 +230,7 @@ export function GameScreen() {
         return next;
       });
     },
-    [endRun, flash, isFilling, play, shakeX],
+    [endRun, isFilling, play],
   );
 
   const startFill = useCallback(() => {
@@ -383,13 +373,16 @@ export function GameScreen() {
 
     if (p === 'filling') {
       lockingTap.current = true;
+      // Freeze fill exactly where it is — no cancel jump / meter flick
+      const stoppedAt = fill.value;
       cancelAnimation(fill);
       cancelAnimation(zoneTarget);
       cancelAnimation(zoneHalf);
+      fill.value = stoppedAt;
       isFilling.value = 0;
       play('tap');
       void gameHaptics.stop();
-      finishRound(fill.value);
+      finishRound(stoppedAt);
       requestAnimationFrame(() => {
         lockingTap.current = false;
       });
@@ -410,10 +403,7 @@ export function GameScreen() {
   };
 
   const meterStyle = useAnimatedStyle(() => ({
-    transform: [{ translateX: meterX.value + shakeX.value }],
-  }));
-  const flashStyle = useAnimatedStyle(() => ({
-    opacity: flash.value,
+    transform: [{ translateX: meterX.value }],
   }));
   const feedbackStyle = useAnimatedStyle(() => ({
     opacity: feedbackOpacity.value,
@@ -429,18 +419,17 @@ export function GameScreen() {
   const accuracy =
     stats.attempts > 0 ? Math.round((stats.hits / stats.attempts) * 100) : 0;
 
+  // Only countdown / game-over copy — no persistent "TAP TO STOP"
   const prompt =
     phase === 'countdown'
       ? countdown > 0
         ? String(countdown)
         : 'GO!'
-      : phase === 'filling'
-        ? 'TAP TO STOP'
-        : phase === 'gameover'
-          ? isNewBest
-            ? 'NEW BEST!'
-            : 'GAME OVER'
-          : '';
+      : phase === 'gameover'
+        ? isNewBest
+          ? 'NEW BEST!'
+          : 'GAME OVER'
+        : '';
 
   const hitEnabled = phase === 'filling' || phase === 'gameover';
 
@@ -470,7 +459,6 @@ export function GameScreen() {
       <View style={[styles.ground, { height: 44 + insets.bottom }]}>
         <View style={styles.hazard} />
       </View>
-      <Animated.View style={[styles.flash, flashStyle]} />
 
       <View
         style={[styles.content, { paddingTop: insets.top + 8, paddingBottom: insets.bottom + 14 }]}
@@ -556,18 +544,18 @@ export function GameScreen() {
           </Animated.View>
         </View>
 
-        <Text
-          style={[
-            styles.prompt,
-            phase === 'filling' && styles.promptTap,
-            phase === 'gameover' && styles.promptOver,
-          ]}
-          pointerEvents="none">
-          {prompt}
-          {phase === 'gameover'
-            ? `\nAcc ${accuracy}% · Combo ${stats.bestCombo} · LVL ${round.level}`
-            : ''}
-        </Text>
+        {prompt || phase === 'gameover' ? (
+          <Text
+            style={[styles.prompt, phase === 'countdown' && styles.promptCountdown, phase === 'gameover' && styles.promptOver]}
+            pointerEvents="none">
+            {prompt}
+            {phase === 'gameover'
+              ? `\nAcc ${accuracy}% · Combo ${stats.bestCombo} · LVL ${round.level}`
+              : ''}
+          </Text>
+        ) : (
+          <View style={styles.promptSpacer} pointerEvents="none" />
+        )}
 
         {phase === 'ready' || phase === 'gameover' ? (
           <View style={styles.menuCol} pointerEvents="auto">
@@ -586,7 +574,12 @@ export function GameScreen() {
       </View>
 
       {hitEnabled ? (
-        <Pressable style={styles.hitLayer} onPressIn={onTap} accessibilityRole="button" />
+        <Pressable
+          style={styles.hitLayer}
+          onPressIn={onTap}
+          accessibilityRole="button"
+          android_ripple={{ color: 'transparent' }}
+        />
       ) : null}
     </View>
   );
