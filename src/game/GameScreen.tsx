@@ -15,6 +15,8 @@ import Animated, {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { GameColors, GameFonts, Gradients } from '@/constants/gameTheme';
+import { Clouds } from '@/game/Clouds';
+import { Hearts } from '@/game/Hearts';
 import { gameHaptics } from '@/game/haptics';
 import { createRng, makeRound } from '@/game/levels';
 import { comboMultiplier, scoreFill, STARTING_LIVES } from '@/game/scoring';
@@ -22,17 +24,15 @@ import { DEFAULT_SKIN, SKINS } from '@/game/skins';
 import {
   commitRunResult,
   dailySeed,
-  equipSkin,
   loadPersist,
   setSoundMuted,
   todayKey,
-  unlockSkin,
 } from '@/game/storage';
-import type { PersistState, RoundConfig, RoundOutcome, SessionStats, SkinId } from '@/game/types';
+import type { PersistState, RoundConfig, RoundOutcome, SessionStats } from '@/game/types';
 import { useSounds } from '@/game/useSounds';
 import { VerticalMeter } from '@/game/VerticalMeter';
 
-type Phase = 'ready' | 'countdown' | 'filling' | 'result' | 'gameover' | 'skins';
+type Phase = 'ready' | 'countdown' | 'filling' | 'result' | 'gameover';
 
 const emptyStats = (): SessionStats => ({
   attempts: 0,
@@ -123,6 +123,7 @@ export function GameScreen() {
         score: finalScore,
         coinsEarned: session.coinsEarned,
         bestCombo: session.bestCombo,
+        bestLevel: roundRef.current.level,
         isDaily: dailyMode,
       });
       setPersist(next);
@@ -332,7 +333,7 @@ export function GameScreen() {
   const onTap = () => {
     if (lockingTap.current) return;
     const p = phaseRef.current;
-    if (p === 'countdown' || p === 'skins' || p === 'ready' || p === 'result') return;
+    if (p === 'countdown' || p === 'ready' || p === 'result') return;
 
     if (p === 'filling') {
       lockingTap.current = true;
@@ -360,17 +361,6 @@ export function GameScreen() {
   const toggleMute = async () => {
     const next = await setSoundMuted(!muted);
     setPersist(next);
-  };
-
-  const onBuyOrEquip = async (id: SkinId) => {
-    if (!persist) return;
-    if (persist.unlockedSkins.includes(id)) {
-      const next = await equipSkin(id);
-      if (next) setPersist(next);
-      return;
-    }
-    const next = await unlockSkin(id, SKINS[id].cost);
-    if (next) setPersist(next);
   };
 
   const meterStyle = useAnimatedStyle(() => ({
@@ -409,8 +399,7 @@ export function GameScreen() {
         locations={[...Gradients.skyStops]}
         style={styles.sky}
       />
-      <View style={[styles.cloud, styles.cloudA]} />
-      <View style={[styles.cloud, styles.cloudB]} />
+      <Clouds />
       <View style={styles.hillBack} />
       <View style={styles.hillFront} />
       <View style={[styles.ground, { height: 44 + insets.bottom }]}>
@@ -424,12 +413,7 @@ export function GameScreen() {
         <View style={styles.topRow} pointerEvents="box-none">
           <View pointerEvents="none">
             <Text style={styles.brand}>ZONE METER</Text>
-            <Text style={styles.lives}>
-              {'❤'.repeat(Math.max(0, lives))}
-              <Text style={styles.livesEmpty}>
-                {'♡'.repeat(Math.max(0, STARTING_LIVES - lives))}
-              </Text>
-            </Text>
+            <Hearts lives={lives} max={STARTING_LIVES} />
           </View>
 
           <View style={styles.topRight} pointerEvents="box-none">
@@ -445,10 +429,9 @@ export function GameScreen() {
                     : 0
                   : (persist?.highScore ?? 0)}
               </Text>
-            </View>
-            <View style={styles.coinPill} pointerEvents="none">
-              <Text style={styles.bestLabel}>COINS</Text>
-              <Text style={styles.bestValue}>{persist?.coins ?? 0}</Text>
+              {!dailyMode ? (
+                <Text style={styles.bestSub}>LVL {persist?.bestLevel ?? 0}</Text>
+              ) : null}
             </View>
           </View>
         </View>
@@ -478,66 +461,31 @@ export function GameScreen() {
           </Animated.View>
         </View>
 
-        <Text style={styles.prompt} pointerEvents="none">
+        <Text
+          style={[
+            styles.prompt,
+            phase === 'filling' && styles.promptTap,
+            phase === 'gameover' && styles.promptOver,
+          ]}
+          pointerEvents="none">
           {prompt}
           {phase === 'gameover'
-            ? `\nAcc ${accuracy}% · Combo ${stats.bestCombo} · +${stats.coinsEarned} coins`
+            ? `\nAcc ${accuracy}% · Combo ${stats.bestCombo} · LVL ${round.level}`
             : ''}
         </Text>
 
-        {phase === 'ready' || phase === 'skins' || phase === 'gameover' ? (
+        {phase === 'ready' || phase === 'gameover' ? (
           <View style={styles.menuCol} pointerEvents="auto">
-            {phase !== 'skins' ? (
-              <>
-                <Pressable style={styles.ctaFace} onPress={() => startRun(false)}>
-                  <Text style={styles.ctaText}>{phase === 'gameover' ? 'RETRY' : 'PLAY'}</Text>
-                </Pressable>
-                {phase === 'ready' ? (
-                  <>
-                    <Pressable
-                      style={[styles.ctaFace, styles.ctaSecondary]}
-                      onPress={() => startRun(true)}>
-                      <Text style={styles.ctaText}>DAILY</Text>
-                    </Pressable>
-                    <Pressable
-                      style={[styles.ctaFace, styles.ctaSecondary]}
-                      onPress={() => {
-                        setPhase('skins');
-                        phaseRef.current = 'skins';
-                      }}>
-                      <Text style={styles.ctaText}>SKINS</Text>
-                    </Pressable>
-                  </>
-                ) : null}
-              </>
-            ) : (
-              <>
-                {(Object.keys(SKINS) as SkinId[]).map((id) => {
-                  const def = SKINS[id];
-                  const owned = persist?.unlockedSkins.includes(id);
-                  const equipped = persist?.equippedSkin === id;
-                  return (
-                    <Pressable
-                      key={id}
-                      style={[styles.ctaFace, styles.ctaSecondary, equipped && styles.ctaEquipped]}
-                      onPress={() => void onBuyOrEquip(id)}>
-                      <Text style={styles.ctaText}>
-                        {def.name}
-                        {owned ? (equipped ? ' ✓' : '') : ` · ${def.cost}`}
-                      </Text>
-                    </Pressable>
-                  );
-                })}
-                <Pressable
-                  style={styles.ctaFace}
-                  onPress={() => {
-                    setPhase('ready');
-                    phaseRef.current = 'ready';
-                  }}>
-                  <Text style={styles.ctaText}>BACK</Text>
-                </Pressable>
-              </>
-            )}
+            <Pressable style={styles.ctaFace} onPress={() => startRun(false)}>
+              <Text style={styles.ctaText}>{phase === 'gameover' ? 'RETRY' : 'PLAY'}</Text>
+            </Pressable>
+            {phase === 'ready' ? (
+              <Pressable
+                style={[styles.ctaFace, styles.ctaSecondary]}
+                onPress={() => startRun(true)}>
+                <Text style={styles.ctaText}>DAILY</Text>
+              </Pressable>
+            ) : null}
           </View>
         ) : null}
       </View>
@@ -561,9 +509,6 @@ const styles = StyleSheet.create({
     zIndex: 10,
   },
   content: { flex: 1, paddingHorizontal: 20, zIndex: 1 },
-  cloud: { position: 'absolute', backgroundColor: GameColors.cloud, borderRadius: 999 },
-  cloudA: { top: 100, left: 28, width: 72, height: 26 },
-  cloudB: { top: 160, right: 36, width: 88, height: 30 },
   hillBack: {
     position: 'absolute',
     left: -40,
@@ -617,8 +562,6 @@ const styles = StyleSheet.create({
     fontSize: 26,
     color: GameColors.lemon,
   },
-  lives: { marginTop: 2, fontSize: 18, color: GameColors.perfect, letterSpacing: 2 },
-  livesEmpty: { color: 'rgba(0,0,0,0.22)' },
   iconBtn: {
     width: 36,
     height: 36,
@@ -632,34 +575,31 @@ const styles = StyleSheet.create({
   },
   iconBtnText: { fontSize: 16 },
   bestPill: {
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 12,
-    borderWidth: 2,
+    paddingHorizontal: 14,
+    paddingVertical: 7,
+    borderRadius: 14,
+    borderWidth: 2.5,
     borderColor: GameColors.ink,
     backgroundColor: '#FFF4C2',
     alignItems: 'center',
-    minWidth: 56,
-  },
-  coinPill: {
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 12,
-    borderWidth: 2,
-    borderColor: GameColors.ink,
-    backgroundColor: '#D9F99D',
-    alignItems: 'center',
-    minWidth: 56,
+    minWidth: 72,
   },
   bestLabel: {
     fontFamily: GameFonts.soft,
-    fontSize: 10,
+    fontSize: 12,
     color: GameColors.panelInk,
   },
   bestValue: {
     fontFamily: GameFonts.body,
-    fontSize: 14,
+    fontSize: 20,
+    lineHeight: 24,
     color: GameColors.ink,
+  },
+  bestSub: {
+    fontFamily: GameFonts.soft,
+    fontSize: 11,
+    color: GameColors.panelInk,
+    marginTop: 1,
   },
   statsBlock: { marginTop: 2, alignItems: 'center' },
   bigScore: {
@@ -701,6 +641,14 @@ const styles = StyleSheet.create({
     minHeight: 40,
     marginBottom: 6,
   },
+  promptTap: {
+    color: 'rgba(26,28,44,0.45)',
+    marginBottom: 22,
+    fontSize: 17,
+  },
+  promptOver: {
+    marginBottom: 10,
+  },
   menuCol: { width: '90%', alignSelf: 'center', gap: 10, zIndex: 30 },
   ctaFace: {
     height: 52,
@@ -712,10 +660,10 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   ctaSecondary: { backgroundColor: GameColors.bubble },
-  ctaEquipped: { backgroundColor: GameColors.lemon },
   ctaText: {
     fontFamily: GameFonts.body,
     fontSize: 20,
     color: GameColors.white,
   },
 });
+

@@ -11,6 +11,7 @@ const DEFAULT_STATE: PersistState = {
   unlockedSkins: ['toxic'],
   equippedSkin: DEFAULT_SKIN,
   bestComboAllTime: 0,
+  bestLevel: 0,
   dailyBest: { date: '', score: 0 },
   soundMuted: false,
 };
@@ -33,6 +34,7 @@ export async function loadPersist(): Promise<PersistState> {
       equippedSkin: parsed.equippedSkin ?? DEFAULT_SKIN,
       dailyBest: parsed.dailyBest ?? { date: '', score: 0 },
       soundMuted: Boolean(parsed.soundMuted),
+      bestLevel: Number.isFinite(parsed.bestLevel) ? Number(parsed.bestLevel) : 0,
     };
   } catch {
     return { ...DEFAULT_STATE, unlockedSkins: [...DEFAULT_STATE.unlockedSkins] };
@@ -54,14 +56,17 @@ export async function commitRunResult(input: {
   score: number;
   coinsEarned: number;
   bestCombo: number;
+  bestLevel: number;
   isDaily: boolean;
 }): Promise<PersistState> {
   const prev = await loadPersist();
   const next: PersistState = {
     ...prev,
     highScore: Math.max(prev.highScore, input.score),
+    // Coins kept in save data but not surfaced in UI for now
     coins: prev.coins + input.coinsEarned,
     bestComboAllTime: Math.max(prev.bestComboAllTime, input.bestCombo),
+    bestLevel: Math.max(prev.bestLevel, input.bestLevel),
     dailyBest:
       input.isDaily
         ? {

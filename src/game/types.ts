@@ -56,6 +56,8 @@ export type PersistState = {
   unlockedSkins: SkinId[];
   equippedSkin: SkinId;
   bestComboAllTime: number;
+  /** Deepest level reached in any run */
+  bestLevel: number;
   dailyBest: { date: string; score: number };
   soundMuted: boolean;
 };
