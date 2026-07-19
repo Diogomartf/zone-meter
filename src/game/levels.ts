@@ -32,37 +32,50 @@ export type MakeRoundOptions = {
 
 /**
  * Infinite increasing difficulty.
- * Levels 1–3 are intentionally gentler (tutorial pacing).
+ * Levels 1–10 are intentionally wide / hard to miss, then the grind starts.
  */
 export function makeRound(level: number, opts: MakeRoundOptions = {}): RoundConfig {
   const n = Math.max(1, level);
   const rand = opts.rng ?? Math.random;
-  const tutorial = n <= 3;
+  const easy = n <= 10;
+  const easyT = easy ? (n - 1) / 9 : 1; // 0 at lvl1 → 1 at lvl10
 
-  const speedR = ramp(n, tutorial ? 20 : 13);
-  const zoneR = ramp(n, tutorial ? 22 : 15);
-  const placeR = ramp(n, tutorial ? 28 : 18);
-  const g = grind(n);
+  // Difficulty ramps from level 11 onward so the easy stretch doesn't cliff
+  const hardLevel = Math.max(1, n - 10);
+  const speedR = ramp(hardLevel, 16);
+  const zoneR = ramp(hardLevel, 18);
+  const placeR = ramp(hardLevel, 20);
+  const g = grind(hardLevel);
 
-  let fillMs = Math.round(clamp(lerp(1700, 420, speedR) - g * 22, 240, 1900));
-  let zoneHalf = clamp(lerp(0.12, 0.03, zoneR) - g * 0.0028, 0.012, 0.14);
+  let fillMs: number;
+  let zoneHalf: number;
 
-  if (tutorial) {
-    fillMs = Math.round(lerp(1900, 1500, (n - 1) / 2));
-    zoneHalf = lerp(0.14, 0.11, (n - 1) / 2);
+  if (easy) {
+    // Huge hit windows early — ~48% of the meter at lvl1, still generous at lvl10
+    fillMs = Math.round(lerp(2100, 1550, easyT));
+    zoneHalf = lerp(0.24, 0.13, easyT);
+  } else {
+    // Pick up from the end of the easy stretch and tighten gradually
+    fillMs = Math.round(clamp(lerp(1550, 420, speedR) - g * 22, 240, 1600));
+    zoneHalf = clamp(lerp(0.13, 0.03, zoneR) - g * 0.0028, 0.012, 0.13);
   }
 
-  const perfectRatio = tutorial ? 0.36 : lerp(0.32, 0.16, ramp(n, 17));
-  const perfectHalf = clamp(zoneHalf * perfectRatio, 0.005, 0.04);
+  const perfectRatio = easy ? lerp(0.42, 0.34, easyT) : lerp(0.32, 0.16, ramp(n, 17));
+  const perfectHalf = clamp(zoneHalf * perfectRatio, 0.005, easy ? 0.09 : 0.04);
 
-  const edgePad = tutorial
-    ? 0.14
+  const edgePad = easy
+    ? lerp(0.08, 0.12, easyT)
     : clamp(lerp(0.12, 0.035, placeR) - g * 0.003, 0.02, 0.12);
   const min = zoneHalf + edgePad;
   const max = 1 - zoneHalf - edgePad * 0.7;
 
   let target = min + rand() * Math.max(0.01, max - min);
-  if (opts.previousTarget != null) {
+  if (easy) {
+    // Keep early targets near the middle so the fat zone covers most taps
+    const mid = 0.5;
+    const spread = lerp(0.08, 0.18, easyT);
+    target = clamp(mid + (rand() - 0.5) * 2 * spread, min, max);
+  } else if (opts.previousTarget != null) {
     let tries = 0;
     while (Math.abs(target - opts.previousTarget) < 0.09 && tries < 6) {
       target = min + rand() * Math.max(0.01, max - min);
@@ -70,9 +83,9 @@ export function makeRound(level: number, opts: MakeRoundOptions = {}): RoundConf
     }
   }
 
-  // Moving / shrinking unlock after early levels
-  const moving = !tutorial && n >= 6 && rand() < clamp(0.2 + n * 0.02, 0.2, 0.7);
-  const shrinking = !tutorial && n >= 8 && rand() < clamp(0.15 + n * 0.015, 0.15, 0.55);
+  // Moving / shrinking only after the easy stretch
+  const moving = !easy && n >= 12 && rand() < clamp(0.2 + (n - 12) * 0.02, 0.2, 0.7);
+  const shrinking = !easy && n >= 14 && rand() < clamp(0.15 + (n - 14) * 0.015, 0.15, 0.55);
 
   let targetEnd: number | undefined;
   if (moving) {
@@ -86,7 +99,7 @@ export function makeRound(level: number, opts: MakeRoundOptions = {}): RoundConf
 
   // Vary meter size for visual variety (still readable)
   const sizeRoll = rand();
-  const meterScale = tutorial
+  const meterScale = easy
     ? 1
     : sizeRoll < 0.25
       ? 0.78
