@@ -8,11 +8,14 @@
     "scheme": "zonemeter",
     "userInterfaceStyle": "automatic",
     "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "com.diogomartf.zonemeter",
       "icon": "./assets/expo.icon"
     },
     "android": {
+      "package": "com.diogomartf.zonemeter",
       "adaptiveIcon": {
-        "backgroundColor": "#E6F4FE",
+        "backgroundColor": "#4EC0CA",
         "foregroundImage": "./assets/images/android-icon-foreground.png",
         "backgroundImage": "./assets/images/android-icon-background.png",
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
@@ -25,6 +28,7 @@
     },
     "plugins": [
       "expo-router",
+      "expo-dev-client",
       [
         "expo-splash-screen",
         {
@@ -38,6 +42,11 @@
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
+    },
+    "extra": {
+      "eas": {
+        "projectId": "REPLACE_AFTER_EAS_INIT"
+      }
     }
   }
 }
