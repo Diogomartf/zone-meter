@@ -1,5 +1,9 @@
-import { Bungee_400Regular, useFonts as useBungee } from '@expo-google-fonts/bungee';
-import { Nunito_700Bold, Nunito_800ExtraBold, useFonts as useNunito } from '@expo-google-fonts/nunito';
+import {
+  Fredoka_500Medium,
+  Fredoka_600SemiBold,
+  Fredoka_700Bold,
+  useFonts,
+} from '@expo-google-fonts/fredoka';
 import { Stack } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { useEffect } from 'react';
@@ -8,13 +12,15 @@ import { StatusBar } from 'expo-status-bar';
 SplashScreen.preventAutoHideAsync();
 
 export default function RootLayout() {
-  const [bungeeLoaded] = useBungee({ Bungee_400Regular });
-  const [nunitoLoaded] = useNunito({ Nunito_700Bold, Nunito_800ExtraBold });
-  const ready = bungeeLoaded && nunitoLoaded;
+  const [ready] = useFonts({
+    Fredoka_500Medium,
+    Fredoka_600SemiBold,
+    Fredoka_700Bold,
+  });
 
   useEffect(() => {
     if (ready) {
-      SplashScreen.hideAsync();
+      void SplashScreen.hideAsync();
     }
   }, [ready]);
 

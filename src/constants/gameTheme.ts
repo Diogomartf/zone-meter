@@ -17,7 +17,6 @@ export const GameColors = {
   meterShell: '#73BF2E',
   meterShellDark: '#4E9A16',
   meterInner: '#0B1F24',
-  // Alien goo
   liquidCore: '#C8FF3D',
   liquidMid: '#39FF14',
   liquidDeep: '#00C2A8',
@@ -35,8 +34,30 @@ export const GameColors = {
   cloud: 'rgba(255,255,255,0.92)',
 } as const;
 
+/** Pre-hoisted gradient tuples — avoid reallocating every render */
+export const Gradients = {
+  sky: [GameColors.skyTop, GameColors.skyMid, GameColors.skyBottom] as const,
+  skyStops: [0, 0.62, 1] as const,
+  zone: [
+    'rgba(255,75,75,0)',
+    'rgba(255,75,75,0.45)',
+    'rgba(255,45,45,0.95)',
+    'rgba(255,75,75,0.45)',
+    'rgba(255,75,75,0)',
+  ] as const,
+  zoneStops: [0, 0.22, 0.5, 0.78, 1] as const,
+  liquid: [
+    GameColors.liquidFoam,
+    GameColors.liquidCore,
+    GameColors.liquidMid,
+    GameColors.liquidDeep,
+    GameColors.liquidShade,
+  ] as const,
+  liquidStops: [0, 0.12, 0.4, 0.72, 1] as const,
+} as const;
+
 export const GameFonts = {
-  display: 'Bungee_400Regular',
-  body: 'Nunito_800ExtraBold',
-  soft: 'Nunito_700Bold',
+  display: 'Fredoka_700Bold',
+  body: 'Fredoka_600SemiBold',
+  soft: 'Fredoka_500Medium',
 } as const;

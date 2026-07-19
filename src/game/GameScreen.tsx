@@ -14,11 +14,10 @@ import Animated, {
 } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { GameColors, GameFonts } from '@/constants/gameTheme';
+import { GameColors, GameFonts, Gradients } from '@/constants/gameTheme';
 import { gameHaptics } from '@/game/haptics';
 import { loadHighScore, saveHighScore } from '@/game/highScore';
 import { makeRound, scoreFill } from '@/game/levels';
-import { OutlineText } from '@/game/OutlineText';
 import type { RoundConfig, RoundOutcome } from '@/game/types';
 import { useSounds } from '@/game/useSounds';
 import { VerticalMeter } from '@/game/VerticalMeter';
@@ -65,23 +64,22 @@ export function GameScreen() {
   }, [highScore]);
 
   useEffect(() => {
-    loadHighScore().then(setHighScore);
+    void loadHighScore().then(setHighScore);
   }, []);
 
   const bumpPop = () => {
     pop.value = withSequence(
-      withSpring(1.22, { damping: 7, stiffness: 240 }),
-      withSpring(1, { damping: 11, stiffness: 180 }),
+      withSpring(1.16, { damping: 10, stiffness: 220 }),
+      withSpring(1, { damping: 14, stiffness: 180 }),
     );
   };
 
   const shake = () => {
     shakeX.value = withSequence(
-      withTiming(-10, { duration: 40 }),
-      withTiming(10, { duration: 50 }),
-      withTiming(-8, { duration: 45 }),
-      withTiming(6, { duration: 40 }),
-      withTiming(0, { duration: 40 }),
+      withTiming(-8, { duration: 35 }),
+      withTiming(8, { duration: 40 }),
+      withTiming(-5, { duration: 35 }),
+      withTiming(0, { duration: 35 }),
     );
   };
 
@@ -92,8 +90,8 @@ export function GameScreen() {
       setOutcome(result);
       bumpPop();
       flash.value = withSequence(
-        withTiming(1, { duration: 80 }),
-        withTiming(0, { duration: 220 }),
+        withTiming(1, { duration: 70 }),
+        withTiming(0, { duration: 180 }),
       );
 
       isFilling.value = 0;
@@ -113,12 +111,7 @@ export function GameScreen() {
         return;
       }
 
-      if (result.result === 'perfect') {
-        play('perfect');
-      } else {
-        play('zone');
-      }
-
+      play(result.result === 'perfect' ? 'perfect' : 'zone');
       setScore((s) => s + result.points);
       setPhase('result');
       phaseRef.current = 'result';
@@ -180,8 +173,7 @@ export function GameScreen() {
 
     if (phaseRef.current === 'result') {
       void gameHaptics.next();
-      const nextLevel = roundRef.current.level + 1;
-      const next = makeRound(nextLevel);
+      const next = makeRound(roundRef.current.level + 1);
       setRound(next);
       roundRef.current = next;
       fill.value = 0;
@@ -213,7 +205,7 @@ export function GameScreen() {
   }));
 
   const flashStyle = useAnimatedStyle(() => ({
-    opacity: flash.value * 0.28,
+    opacity: flash.value * 0.22,
   }));
 
   const showingResult = Boolean(outcome && (phase === 'result' || phase === 'gameover'));
@@ -232,9 +224,7 @@ export function GameScreen() {
         ? GameColors.lemon
         : outcome?.label === 'Great'
           ? GameColors.zoneHot
-          : outcome?.result === 'zone'
-            ? GameColors.white
-            : GameColors.white;
+          : GameColors.white;
 
   const ctaLabel =
     phase === 'gameover' ? 'RETRY' : phase === 'ready' ? 'PLAY' : phase === 'result' ? 'NEXT' : 'STOP';
@@ -242,37 +232,25 @@ export function GameScreen() {
   return (
     <Pressable style={styles.root} onPress={onTap}>
       <LinearGradient
-        colors={[GameColors.skyTop, GameColors.skyMid, GameColors.skyBottom]}
-        locations={[0, 0.62, 1]}
-        style={StyleSheet.absoluteFill}
+        colors={[...Gradients.sky]}
+        locations={[...Gradients.skyStops]}
+        style={styles.sky}
       />
 
       <View style={[styles.cloud, styles.cloudA]} />
       <View style={[styles.cloud, styles.cloudB]} />
       <View style={[styles.cloud, styles.cloudC]} />
-
       <View style={styles.hillBack} />
       <View style={styles.hillFront} />
-
-      <View style={[styles.ground, { height: 54 + insets.bottom }]}>
+      <View style={[styles.ground, { height: 48 + insets.bottom }]}>
         <View style={styles.hazard} />
-        <View style={[styles.hazardStripe, { left: 0 }]} />
-        <View style={[styles.hazardStripe, { left: 48 }]} />
-        <View style={[styles.hazardStripe, { left: 96 }]} />
-        <View style={[styles.hazardStripe, { left: 144 }]} />
-        <View style={[styles.hazardStripe, { left: 192 }]} />
-        <View style={[styles.hazardStripe, { left: 240 }]} />
-        <View style={[styles.hazardStripe, { left: 288 }]} />
-        <View style={[styles.hazardStripe, { left: 336 }]} />
       </View>
 
-      <Animated.View style={[styles.flash, flashStyle]} pointerEvents="none" />
+      <Animated.View style={[styles.flash, flashStyle]} />
 
-      <View style={[styles.content, { paddingTop: insets.top + 8, paddingBottom: insets.bottom + 18 }]}>
+      <View style={[styles.content, { paddingTop: insets.top + 8, paddingBottom: insets.bottom + 16 }]}>
         <View style={styles.topRow}>
-          <OutlineText style={styles.brand} color={GameColors.lemon} outlineWidth={3}>
-            ZONE METER
-          </OutlineText>
+          <Text style={styles.brand}>ZONE METER</Text>
           <View style={styles.bestPill}>
             <Text style={styles.bestLabel}>BEST</Text>
             <Text style={styles.bestValue}>{highScore}</Text>
@@ -280,9 +258,7 @@ export function GameScreen() {
         </View>
 
         <View style={styles.statsBlock}>
-          <OutlineText style={styles.bigScore} color={GameColors.white} outlineWidth={3}>
-            {String(score)}
-          </OutlineText>
+          <Text style={styles.bigScore}>{score}</Text>
           <Text style={styles.ptsLabel}>PTS</Text>
           <Text style={styles.levelText}>{`LEVEL ${round.level}`}</Text>
         </View>
@@ -293,22 +269,10 @@ export function GameScreen() {
 
         <Animated.View style={[styles.bannerWrap, popStyle]}>
           {showingResult ? (
-            <View
-              style={[
-                styles.banner,
-                phase === 'gameover' ? styles.bannerBad : styles.bannerGood,
-              ]}>
-              <View style={[styles.speedLine, styles.speedLeft]} />
-              <View style={[styles.speedLine, styles.speedRight]} />
-              <Text style={styles.sparkleLeft}>✦</Text>
-              <Text style={styles.sparkleRight}>✦</Text>
-              <OutlineText style={styles.feedback} color={feedbackColor} outlineWidth={3}>
-                {feedback}
-              </OutlineText>
+            <View style={[styles.banner, phase === 'gameover' ? styles.bannerBad : styles.bannerGood]}>
+              <Text style={[styles.feedback, { color: feedbackColor }]}>{feedback}</Text>
               {outcome && outcome.result !== 'miss' ? (
-                <OutlineText style={styles.points} color={GameColors.lemon} outlineWidth={2}>
-                  {`+${outcome.points}`}
-                </OutlineText>
+                <Text style={styles.points}>{`+${outcome.points}`}</Text>
               ) : null}
               {phase === 'gameover' ? (
                 <Text style={styles.gameOverSub}>
@@ -317,9 +281,7 @@ export function GameScreen() {
               ) : null}
             </View>
           ) : (
-            <OutlineText style={styles.prompt} color={GameColors.white} outlineWidth={2}>
-              {feedback}
-            </OutlineText>
+            <Text style={styles.prompt}>{feedback}</Text>
           )}
         </Animated.View>
 
@@ -339,6 +301,13 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: GameColors.skyTop,
   },
+  sky: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    top: 0,
+    bottom: 0,
+  },
   content: {
     flex: 1,
     paddingHorizontal: 20,
@@ -356,8 +325,8 @@ const styles = StyleSheet.create({
     position: 'absolute',
     left: -40,
     right: -40,
-    bottom: 70,
-    height: 120,
+    bottom: 64,
+    height: 110,
     borderTopLeftRadius: 140,
     borderTopRightRadius: 140,
     backgroundColor: GameColors.hillDark,
@@ -366,8 +335,8 @@ const styles = StyleSheet.create({
     position: 'absolute',
     left: -20,
     right: -20,
-    bottom: 48,
-    height: 90,
+    bottom: 44,
+    height: 84,
     borderTopLeftRadius: 120,
     borderTopRightRadius: 120,
     backgroundColor: GameColors.hill,
@@ -381,23 +350,19 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   hazard: {
-    height: 18,
+    height: 16,
     backgroundColor: GameColors.groundStripe,
     borderTopWidth: 3,
     borderColor: GameColors.ink,
   },
-  hazardStripe: {
-    position: 'absolute',
-    top: 0,
-    width: 28,
-    height: 18,
-    backgroundColor: GameColors.ink,
-    transform: [{ skewX: '-28deg' }],
-    opacity: 0.85,
-  },
   flash: {
-    ...StyleSheet.absoluteFill,
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    top: 0,
+    bottom: 0,
     backgroundColor: '#FFFFFF',
+    pointerEvents: 'none',
   },
   topRow: {
     width: '100%',
@@ -407,8 +372,10 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   brand: {
-    fontSize: 26,
-    letterSpacing: 1,
+    fontFamily: GameFonts.display,
+    fontSize: 28,
+    letterSpacing: 0.5,
+    color: GameColors.lemon,
     flexShrink: 1,
   },
   bestPill: {
@@ -424,36 +391,38 @@ const styles = StyleSheet.create({
   },
   bestLabel: {
     fontFamily: GameFonts.soft,
-    fontSize: 9,
+    fontSize: 10,
     letterSpacing: 0.8,
     color: GameColors.panelInk,
   },
   bestValue: {
     fontFamily: GameFonts.body,
-    fontSize: 14,
+    fontSize: 15,
     color: GameColors.ink,
-    lineHeight: 16,
+    lineHeight: 17,
   },
   statsBlock: {
-    marginTop: 8,
+    marginTop: 6,
     alignItems: 'center',
   },
   bigScore: {
-    fontSize: 58,
-    lineHeight: 62,
+    fontFamily: GameFonts.display,
+    fontSize: 56,
+    lineHeight: 60,
+    color: GameColors.white,
   },
   ptsLabel: {
-    marginTop: -4,
+    marginTop: -2,
     fontFamily: GameFonts.body,
-    fontSize: 18,
+    fontSize: 16,
     letterSpacing: 2,
     color: GameColors.ink,
   },
   levelText: {
-    marginTop: 6,
+    marginTop: 4,
     fontFamily: GameFonts.body,
-    fontSize: 20,
-    letterSpacing: 1.5,
+    fontSize: 18,
+    letterSpacing: 1,
     color: GameColors.ink,
   },
   meterStage: {
@@ -463,21 +432,20 @@ const styles = StyleSheet.create({
     marginVertical: 4,
   },
   bannerWrap: {
-    minHeight: 92,
+    minHeight: 84,
     width: '100%',
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 10,
+    marginBottom: 8,
   },
   banner: {
     width: '100%',
-    borderRadius: 22,
-    borderWidth: 4,
+    borderRadius: 20,
+    borderWidth: 3,
     borderColor: GameColors.ink,
-    paddingVertical: 14,
-    paddingHorizontal: 16,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
     alignItems: 'center',
-    overflow: 'hidden',
   },
   bannerGood: {
     backgroundColor: GameColors.bubble,
@@ -485,62 +453,48 @@ const styles = StyleSheet.create({
   bannerBad: {
     backgroundColor: '#FF8B8B',
   },
-  speedLine: {
-    position: 'absolute',
-    top: 18,
-    width: 34,
-    height: 5,
-    borderRadius: 4,
-    backgroundColor: GameColors.speedLine,
-  },
-  speedLeft: { left: 16, transform: [{ rotate: '-18deg' }] },
-  speedRight: { right: 16, transform: [{ rotate: '18deg' }] },
-  sparkleLeft: {
-    position: 'absolute',
-    left: 18,
-    bottom: 12,
-    color: GameColors.white,
-    fontSize: 16,
-  },
-  sparkleRight: {
-    position: 'absolute',
-    right: 18,
-    bottom: 12,
-    color: GameColors.white,
-    fontSize: 16,
-  },
   feedback: {
-    fontSize: 34,
-    lineHeight: 38,
+    fontFamily: GameFonts.display,
+    fontSize: 32,
+    lineHeight: 36,
+    textAlign: 'center',
   },
   points: {
     marginTop: 2,
-    fontSize: 26,
+    fontFamily: GameFonts.display,
+    fontSize: 24,
+    color: GameColors.lemon,
   },
   gameOverSub: {
     marginTop: 4,
     fontFamily: GameFonts.body,
-    fontSize: 18,
+    fontSize: 17,
     color: GameColors.ink,
   },
   prompt: {
-    fontSize: 26,
+    fontFamily: GameFonts.display,
+    fontSize: 24,
+    color: GameColors.white,
+    textAlign: 'center',
   },
   cta: {
     width: '86%',
-    height: 58,
+    height: 56,
     marginBottom: 4,
   },
   ctaShadow: {
-    ...StyleSheet.absoluteFill,
+    position: 'absolute',
+    left: 0,
+    right: 0,
     top: 5,
+    bottom: 0,
     borderRadius: 18,
     backgroundColor: GameColors.playBlueDark,
     borderWidth: 3,
     borderColor: GameColors.ink,
   },
   ctaFace: {
-    height: 54,
+    height: 52,
     borderRadius: 18,
     backgroundColor: GameColors.playBlue,
     borderWidth: 3,

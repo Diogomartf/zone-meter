@@ -1,4 +1,5 @@
 import { LinearGradient } from 'expo-linear-gradient';
+import { memo, useEffect } from 'react';
 import { StyleSheet, View } from 'react-native';
 import Animated, {
   Easing,
@@ -8,9 +9,8 @@ import Animated, {
   withTiming,
   type SharedValue,
 } from 'react-native-reanimated';
-import { useEffect } from 'react';
 
-import { GameColors } from '@/constants/gameTheme';
+import { GameColors, Gradients } from '@/constants/gameTheme';
 import type { RoundConfig } from '@/game/types';
 
 type Props = {
@@ -22,12 +22,12 @@ const METER_H = 340;
 const METER_W = 108;
 const INNER_H = METER_H - 20;
 
-export function VerticalMeter({ fill, round }: Props) {
+function VerticalMeterComponent({ fill, round }: Props) {
   const wobble = useSharedValue(0);
 
   useEffect(() => {
     wobble.value = withRepeat(
-      withTiming(1, { duration: 900, easing: Easing.inOut(Easing.sin) }),
+      withTiming(1, { duration: 1200, easing: Easing.inOut(Easing.sin) }),
       -1,
       true,
     );
@@ -37,18 +37,9 @@ export function VerticalMeter({ fill, round }: Props) {
     height: Math.max(14, fill.value * INNER_H),
   }));
 
+  // One surface animation only — cheaper than multi-blob drivers
   const surfaceStyle = useAnimatedStyle(() => ({
-    transform: [{ translateY: (wobble.value - 0.5) * 5 }, { scaleX: 1 + wobble.value * 0.04 }],
-  }));
-
-  const blobAStyle = useAnimatedStyle(() => ({
-    transform: [{ translateY: -wobble.value * 8 }, { translateX: wobble.value * 3 }],
-    opacity: 0.35 + wobble.value * 0.25,
-  }));
-
-  const blobBStyle = useAnimatedStyle(() => ({
-    transform: [{ translateY: wobble.value * 6 }, { translateX: -wobble.value * 4 }],
-    opacity: 0.25 + (1 - wobble.value) * 0.2,
+    transform: [{ translateY: (wobble.value - 0.5) * 4 }],
   }));
 
   const zoneBottom = (round.target - round.zoneHalf) * INNER_H;
@@ -65,61 +56,21 @@ export function VerticalMeter({ fill, round }: Props) {
       <View style={styles.shell}>
         <View style={styles.shellLip} />
         <View style={styles.glass}>
-          {/* Single red gradient zone band */}
           <LinearGradient
-            colors={[
-              'rgba(255,75,75,0)',
-              'rgba(255,75,75,0.45)',
-              'rgba(255,45,45,0.95)',
-              'rgba(255,75,75,0.45)',
-              'rgba(255,75,75,0)',
-            ]}
-            locations={[0, 0.22, 0.5, 0.78, 1]}
-            style={[
-              styles.zone,
-              {
-                bottom: zoneBottom,
-                height: zoneHeight,
-              },
-            ]}
+            colors={[...Gradients.zone]}
+            locations={[...Gradients.zoneStops]}
+            style={[styles.zone, { bottom: zoneBottom, height: zoneHeight }]}
           />
 
           <Animated.View style={[styles.liquidWrap, liquidStyle]}>
             <LinearGradient
-              colors={[
-                GameColors.liquidFoam,
-                GameColors.liquidCore,
-                GameColors.liquidMid,
-                GameColors.liquidDeep,
-                GameColors.liquidShade,
-              ]}
-              locations={[0, 0.12, 0.4, 0.72, 1]}
-              style={StyleSheet.absoluteFill}
+              colors={[...Gradients.liquid]}
+              locations={[...Gradients.liquidStops]}
+              style={styles.fill}
             />
-
-            {/* Alien goo sheen */}
-            <LinearGradient
-              colors={['rgba(255,255,255,0.35)', 'rgba(255,255,255,0)', 'rgba(57,255,20,0.2)']}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
-              style={styles.sheen}
-            />
-
-            <Animated.View style={[styles.blobA, blobAStyle]} />
-            <Animated.View style={[styles.blobB, blobBStyle]} />
-            <View style={styles.blobC} />
-
-            {/* Wobbly alien surface */}
-            <Animated.View style={[styles.surface, surfaceStyle]}>
-              <LinearGradient
-                colors={['rgba(233,255,224,0.95)', 'rgba(200,255,61,0.85)', 'rgba(57,255,20,0.4)']}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 1 }}
-                style={styles.surfaceFill}
-              />
-              <View style={styles.surfaceBumpL} />
-              <View style={styles.surfaceBumpR} />
-            </Animated.View>
+            <View style={styles.blobA} />
+            <View style={styles.blobB} />
+            <Animated.View style={[styles.surface, surfaceStyle]} />
           </Animated.View>
         </View>
       </View>
@@ -127,6 +78,8 @@ export function VerticalMeter({ fill, round }: Props) {
     </View>
   );
 }
+
+export const VerticalMeter = memo(VerticalMeterComponent);
 
 const styles = StyleSheet.create({
   wrap: {
@@ -184,65 +137,40 @@ const styles = StyleSheet.create({
     bottom: 0,
     overflow: 'hidden',
   },
-  sheen: {
-    ...StyleSheet.absoluteFill,
+  fill: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    top: 0,
+    bottom: 0,
   },
   blobA: {
     position: 'absolute',
     left: 18,
     bottom: 40,
-    width: 28,
-    height: 34,
-    borderRadius: 18,
-    backgroundColor: 'rgba(200,255,61,0.45)',
+    width: 26,
+    height: 30,
+    borderRadius: 16,
+    backgroundColor: 'rgba(200,255,61,0.4)',
   },
   blobB: {
     position: 'absolute',
-    right: 14,
-    bottom: 70,
-    width: 20,
-    height: 26,
-    borderRadius: 14,
-    backgroundColor: 'rgba(0,194,168,0.4)',
-  },
-  blobC: {
-    position: 'absolute',
-    left: 34,
-    bottom: 110,
-    width: 12,
-    height: 12,
-    borderRadius: 8,
-    backgroundColor: 'rgba(233,255,224,0.55)',
+    right: 16,
+    bottom: 72,
+    width: 18,
+    height: 22,
+    borderRadius: 12,
+    backgroundColor: 'rgba(0,194,168,0.35)',
   },
   surface: {
     position: 'absolute',
-    left: -6,
-    right: -6,
-    top: -6,
-    height: 22,
-  },
-  surfaceFill: {
-    ...StyleSheet.absoluteFill,
-    borderTopLeftRadius: 40,
-    borderTopRightRadius: 40,
-  },
-  surfaceBumpL: {
-    position: 'absolute',
-    left: 18,
-    top: -4,
-    width: 22,
+    left: 0,
+    right: 0,
+    top: 0,
     height: 14,
-    borderRadius: 12,
-    backgroundColor: 'rgba(233,255,224,0.85)',
-  },
-  surfaceBumpR: {
-    position: 'absolute',
-    right: 26,
-    top: -2,
-    width: 16,
-    height: 12,
-    borderRadius: 10,
-    backgroundColor: 'rgba(57,255,20,0.7)',
+    backgroundColor: 'rgba(233,255,224,0.75)',
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
   },
   markerRow: {
     position: 'absolute',
