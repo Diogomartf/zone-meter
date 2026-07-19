@@ -12,6 +12,7 @@ const DEFAULT_STATE: PersistState = {
   equippedSkin: DEFAULT_SKIN,
   bestComboAllTime: 0,
   dailyBest: { date: '', score: 0 },
+  soundMuted: false,
 };
 
 function todayKey() {
@@ -31,10 +32,18 @@ export async function loadPersist(): Promise<PersistState> {
         : ['toxic'],
       equippedSkin: parsed.equippedSkin ?? DEFAULT_SKIN,
       dailyBest: parsed.dailyBest ?? { date: '', score: 0 },
+      soundMuted: Boolean(parsed.soundMuted),
     };
   } catch {
     return { ...DEFAULT_STATE, unlockedSkins: [...DEFAULT_STATE.unlockedSkins] };
   }
+}
+
+export async function setSoundMuted(muted: boolean): Promise<PersistState> {
+  const prev = await loadPersist();
+  const next = { ...prev, soundMuted: muted };
+  await savePersist(next);
+  return next;
 }
 
 export async function savePersist(state: PersistState): Promise<void> {

@@ -84,6 +84,18 @@ export function makeRound(level: number, opts: MakeRoundOptions = {}): RoundConf
 
   const zoneHalfEnd = shrinking ? clamp(zoneHalf * lerp(0.72, 0.55, ramp(n, 20)), 0.01, zoneHalf) : undefined;
 
+  // Vary meter size for visual variety (still readable)
+  const sizeRoll = rand();
+  const meterScale = tutorial
+    ? 1
+    : sizeRoll < 0.25
+      ? 0.78
+      : sizeRoll < 0.5
+        ? 0.9
+        : sizeRoll < 0.8
+          ? 1
+          : 1.12;
+
   return {
     level: n,
     target,
@@ -94,6 +106,7 @@ export function makeRound(level: number, opts: MakeRoundOptions = {}): RoundConf
     fillMs,
     moving,
     shrinking,
+    meterScale,
   };
 }
 

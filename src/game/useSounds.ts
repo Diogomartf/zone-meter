@@ -1,5 +1,5 @@
 import { createAudioPlayer, setAudioModeAsync, type AudioPlayer } from 'expo-audio';
-import { useEffect, useRef } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
 
 type Sfx = 'tap' | 'perfect' | 'zone' | 'miss' | 'start' | 'tick';
 
@@ -12,8 +12,13 @@ const SOURCES: Record<Sfx, number> = {
   tick: require('../../assets/sounds/tick.wav'),
 };
 
-export function useSounds() {
+export function useSounds(muted: boolean) {
   const players = useRef<Partial<Record<Sfx, AudioPlayer>>>({});
+  const mutedRef = useRef(muted);
+
+  useEffect(() => {
+    mutedRef.current = muted;
+  }, [muted]);
 
   useEffect(() => {
     let alive = true;
@@ -25,7 +30,7 @@ export function useSounds() {
           interruptionMode: 'mixWithOthers',
         });
       } catch {
-        // Audio mode is best-effort on web/simulators.
+        // best-effort
       }
 
       if (!alive) return;
@@ -43,23 +48,24 @@ export function useSounds() {
         try {
           player?.remove();
         } catch {
-          // ignore cleanup races
+          // ignore
         }
       });
       players.current = {};
     };
   }, []);
 
-  const play = (key: Sfx) => {
+  const play = useCallback((key: Sfx) => {
+    if (mutedRef.current) return;
     const player = players.current[key];
     if (!player) return;
     try {
       player.seekTo(0);
       player.play();
     } catch {
-      // ignore playback races
+      // ignore
     }
-  };
+  }, []);
 
   return { play };
 }

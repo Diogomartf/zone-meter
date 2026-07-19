@@ -19,6 +19,8 @@ export type RoundConfig = {
   moving: boolean;
   /** Whether zone shrinks during the fill */
   shrinking: boolean;
+  /** Visual meter scale (height/width), ~0.72–1.15 */
+  meterScale: number;
 };
 
 export type RoundOutcome = {
@@ -55,4 +57,5 @@ export type PersistState = {
   equippedSkin: SkinId;
   bestComboAllTime: number;
   dailyBest: { date: string; score: number };
+  soundMuted: boolean;
 };
