@@ -17,9 +17,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { GameColors, GameFonts, Gradients } from '@/constants/gameTheme';
 import { Clouds } from '@/game/Clouds';
+import { CountdownBurst } from '@/game/CountdownBurst';
 import { Hearts } from '@/game/Hearts';
-
-const LOGO = require('@/assets/images/zone-meter-logo.png');
 import { gameHaptics } from '@/game/haptics';
 import { createRng, makeRound } from '@/game/levels';
 import { comboMultiplier, scoreFill, STARTING_LIVES } from '@/game/scoring';
@@ -40,6 +39,8 @@ import type {
 } from '@/game/types';
 import { useSounds } from '@/game/useSounds';
 import { VerticalMeter } from '@/game/VerticalMeter';
+
+const LOGO = require('@/assets/images/zone-meter-logo.png');
 
 type Phase = 'ready' | 'countdown' | 'filling' | 'result' | 'gameover';
 
@@ -291,23 +292,35 @@ export function GameScreen() {
         setPhase('countdown');
         phaseRef.current = 'countdown';
         setCountdown(3);
-        let n = 3;
+        play('tick');
+        void gameHaptics.countdownTick(3);
+
+        // 3 → 2 → 1 → GO! with rising energy
+        const beats = [2, 1, 0] as const;
+        let i = 0;
         const tick = () => {
-          if (n <= 1) {
-            setCountdown(0);
-            startFill();
+          const n = beats[i];
+          i += 1;
+          setCountdown(n);
+          if (n > 0) {
+            play('tick');
+            void gameHaptics.countdownTick(n);
+            countTimer.current = setTimeout(tick, 560);
             return;
           }
-          n -= 1;
-          setCountdown(n);
-          countTimer.current = setTimeout(tick, 400);
+          // GO!
+          play('start');
+          void gameHaptics.countdownTick(0);
+          countTimer.current = setTimeout(() => {
+            startFill();
+          }, 520);
         };
-        countTimer.current = setTimeout(tick, 400);
+        countTimer.current = setTimeout(tick, 560);
       } else {
         startFill();
       }
     },
-    [fill, meterX, startFill, zoneHalf, zoneTarget],
+    [fill, meterX, play, startFill, zoneHalf, zoneTarget],
   );
 
   const spawnNextLevel = useCallback(() => {
@@ -417,17 +430,9 @@ export function GameScreen() {
   const accuracy =
     stats.attempts > 0 ? Math.round((stats.hits / stats.attempts) * 100) : 0;
 
-  // Only countdown / game-over copy — no persistent "TAP TO STOP"
+  // Game-over copy only — countdown is a full-screen burst
   const prompt =
-    phase === 'countdown'
-      ? countdown > 0
-        ? String(countdown)
-        : 'GO!'
-      : phase === 'gameover'
-        ? isNewBest
-          ? 'NEW BEST!'
-          : 'GAME OVER'
-        : '';
+    phase === 'gameover' ? (isNewBest ? 'NEW BEST!' : 'GAME OVER') : '';
 
   const hitEnabled = phase === 'filling' || phase === 'gameover';
 
@@ -540,12 +545,12 @@ export function GameScreen() {
               scale={round.meterScale}
             />
           </Animated.View>
+
+          <CountdownBurst value={countdown} visible={phase === 'countdown'} />
         </View>
 
         {prompt || phase === 'gameover' ? (
-          <Text
-            style={[styles.prompt, phase === 'countdown' && styles.promptCountdown, phase === 'gameover' && styles.promptOver]}
-            pointerEvents="none">
+          <Text style={[styles.prompt, styles.promptOver]} pointerEvents="none">
             {prompt}
             {phase === 'gameover'
               ? `\nAcc ${accuracy}% · Combo ${stats.bestCombo} · LVL ${round.level}`
@@ -778,13 +783,6 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     minHeight: 40,
     marginBottom: 6,
-  },
-  promptCountdown: {
-    fontFamily: GameFonts.display,
-    fontSize: 42,
-    lineHeight: 46,
-    color: GameColors.ink,
-    marginBottom: 18,
   },
   promptSpacer: {
     minHeight: 40,

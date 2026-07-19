@@ -29,6 +29,17 @@ export const gameHaptics = {
     return safe(() => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium));
   },
 
+  /** Countdown beat — ramps up into GO */
+  countdownTick(n: number) {
+    if (n <= 0) {
+      return safe(() => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy));
+    }
+    if (n === 1) {
+      return safe(() => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium));
+    }
+    return safe(() => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light));
+  },
+
   /** Advance / retry */
   next() {
     return safe(() => Haptics.selectionAsync());
