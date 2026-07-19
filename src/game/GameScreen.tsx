@@ -89,12 +89,10 @@ export function GameScreen() {
   const fill = useSharedValue(0);
   const zoneTarget = useSharedValue(round.target);
   const zoneHalf = useSharedValue(round.zoneHalf);
-  const shakeX = useSharedValue(0);
   const meterX = useSharedValue(0);
   const feedbackOpacity = useSharedValue(0);
   const feedbackScale = useSharedValue(0.7);
   const comboPulse = useSharedValue(1);
-  const flash = useSharedValue(0);
   const isFilling = useSharedValue(0);
 
   const phaseRef = useRef<Phase>('ready');
@@ -637,15 +635,6 @@ const styles = StyleSheet.create({
     borderTopWidth: 3,
     borderColor: GameColors.ink,
   },
-  flash: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    top: 0,
-    bottom: 0,
-    backgroundColor: '#fff',
-    pointerEvents: 'none',
-  },
   topRow: {
     width: '100%',
     flexDirection: 'row',
@@ -790,10 +779,16 @@ const styles = StyleSheet.create({
     minHeight: 40,
     marginBottom: 6,
   },
-  promptTap: {
-    color: 'rgba(26,28,44,0.45)',
+  promptCountdown: {
+    fontFamily: GameFonts.display,
+    fontSize: 42,
+    lineHeight: 46,
+    color: GameColors.ink,
+    marginBottom: 18,
+  },
+  promptSpacer: {
+    minHeight: 40,
     marginBottom: 22,
-    fontSize: 17,
   },
   promptOver: {
     marginBottom: 10,
