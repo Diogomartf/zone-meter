@@ -45,6 +45,8 @@ const GAME_BG = require('../../assets/images/game-bg.png');
 const PAD_SURFACE_Y = 0.905;
 const METER_BASE_H = 340;
 const METER_WRAP_EXTRA = 28;
+/** Brief freeze after the meter lands so short zones can be read before fill. */
+const LEVEL_READ_PAUSE_MS = 320;
 
 type Phase = 'ready' | 'countdown' | 'filling' | 'result' | 'gameover';
 
@@ -338,18 +340,9 @@ export function GameScreen() {
       zoneHalf.value = next.zoneHalf;
       setOutcome(null);
 
-      if (animateIn) {
-        meterX.value = 340;
-        meterX.value = withTiming(0, {
-          duration: 340,
-          easing: Easing.out(Easing.cubic),
-        });
-      } else {
-        meterX.value = 0;
-      }
-
       // Only countdown on the very first meter of a run
       if (next.level === 1) {
+        meterX.value = 0;
         setPhase('countdown');
         phaseRef.current = 'countdown';
         setCountdown(3);
@@ -377,8 +370,29 @@ export function GameScreen() {
           }, 520);
         };
         countTimer.current = setTimeout(tick, 560);
+        return;
+      }
+
+      // Later levels: land the meter, pause so the zone is readable, then fill
+      const startAfterReadPause = () => {
+        if (countTimer.current) clearTimeout(countTimer.current);
+        countTimer.current = setTimeout(() => {
+          startFill();
+        }, LEVEL_READ_PAUSE_MS);
+      };
+
+      if (animateIn) {
+        meterX.value = 340;
+        meterX.value = withTiming(
+          0,
+          { duration: 340, easing: Easing.out(Easing.cubic) },
+          (done) => {
+            if (done) runOnJS(startAfterReadPause)();
+          },
+        );
       } else {
-        startFill();
+        meterX.value = 0;
+        startAfterReadPause();
       }
     },
     [fill, meterX, play, startFill, zoneHalf, zoneTarget],
@@ -423,6 +437,10 @@ export function GameScreen() {
   const startRun = (daily: boolean) => {
     if (countTimer.current) clearTimeout(countTimer.current);
     if (autoTimer.current) clearTimeout(autoTimer.current);
+    cancelAnimation(meterX);
+    cancelAnimation(fill);
+    cancelAnimation(zoneTarget);
+    cancelAnimation(zoneHalf);
     setDailyMode(daily);
     rngRef.current = daily ? createRng(dailySeed()) : Math.random;
     setScore(0);
@@ -435,6 +453,7 @@ export function GameScreen() {
     setIsNewBest(false);
     setFeedback(null);
     feedbackOpacity.value = 0;
+    isFilling.value = 0;
     beginRound(makeRound(1, { rng: rngRef.current }), false);
   };
 
