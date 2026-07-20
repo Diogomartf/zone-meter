@@ -3,10 +3,16 @@ import { Platform } from 'react-native';
 
 import type { RoundLabel } from '@/game/types';
 
-const enabled = Platform.OS === 'ios' || Platform.OS === 'android';
+const platformOk = Platform.OS === 'ios' || Platform.OS === 'android';
+let userEnabled = true;
+
+/** Sync from persist so gameHaptics respects the settings toggle. */
+export function setGameHapticsEnabled(enabled: boolean) {
+  userEnabled = enabled;
+}
 
 async function safe(run: () => Promise<unknown>) {
-  if (!enabled) return;
+  if (!platformOk || !userEnabled) return;
   try {
     await run();
   } catch {
@@ -52,7 +58,7 @@ export const gameHaptics = {
 
   /** Graded result buzz */
   async result(label: RoundLabel) {
-    if (!enabled) return;
+    if (!platformOk || !userEnabled) return;
 
     switch (label) {
       case 'Perfect':

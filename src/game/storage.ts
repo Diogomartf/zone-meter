@@ -14,6 +14,7 @@ const DEFAULT_STATE: PersistState = {
   bestLevel: 0,
   dailyBest: { date: '', score: 0 },
   soundMuted: false,
+  hapticsEnabled: true,
 };
 
 function todayKey() {
@@ -34,6 +35,7 @@ export async function loadPersist(): Promise<PersistState> {
       equippedSkin: parsed.equippedSkin ?? DEFAULT_SKIN,
       dailyBest: parsed.dailyBest ?? { date: '', score: 0 },
       soundMuted: Boolean(parsed.soundMuted),
+      hapticsEnabled: parsed.hapticsEnabled !== false,
       bestLevel: Number.isFinite(parsed.bestLevel) ? Number(parsed.bestLevel) : 0,
     };
   } catch {
@@ -44,6 +46,13 @@ export async function loadPersist(): Promise<PersistState> {
 export async function setSoundMuted(muted: boolean): Promise<PersistState> {
   const prev = await loadPersist();
   const next = { ...prev, soundMuted: muted };
+  await savePersist(next);
+  return next;
+}
+
+export async function setHapticsEnabled(enabled: boolean): Promise<PersistState> {
+  const prev = await loadPersist();
+  const next = { ...prev, hapticsEnabled: enabled };
   await savePersist(next);
   return next;
 }

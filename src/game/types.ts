@@ -60,4 +60,6 @@ export type PersistState = {
   bestLevel: number;
   dailyBest: { date: string; score: number };
   soundMuted: boolean;
+  /** Vibration / haptic feedback during play */
+  hapticsEnabled: boolean;
 };

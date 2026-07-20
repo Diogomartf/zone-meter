@@ -48,6 +48,9 @@
     "web": "bunx expo start --web",
     "lint": "bunx expo lint",
     "build:dev:android": "bunx eas-cli build --profile development --platform android",
-    "build:dev:ios": "bunx eas-cli build --profile development --platform ios"
+    "build:dev:ios": "bunx eas-cli build --profile development --platform ios",
+    "deploy:ios": "bunx eas-cli build --profile production --platform ios --auto-submit",
+    "deploy:android": "bunx eas-cli build --profile production --platform android --auto-submit",
+    "deploy:all": "bunx eas-cli build --profile production --platform all --auto-submit"
   }
 }

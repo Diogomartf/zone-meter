@@ -1,6 +1,15 @@
 import { Image } from 'expo-image';
+import { SymbolView } from 'expo-symbols';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import {
+  Alert,
+  Linking,
+  Pressable,
+  StyleSheet,
+  Text,
+  useWindowDimensions,
+  View,
+} from 'react-native';
 import Animated, {
   cancelAnimation,
   Easing,
@@ -17,7 +26,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { GameColors, GameFonts } from '@/constants/gameTheme';
 import { CountdownBurst } from '@/game/CountdownBurst';
 import { Hearts } from '@/game/Hearts';
-import { gameHaptics } from '@/game/haptics';
+import { gameHaptics, setGameHapticsEnabled } from '@/game/haptics';
 import { createRng, makeRound } from '@/game/levels';
 import {
   comboMultiplier,
@@ -25,11 +34,13 @@ import {
   scoreFill,
   STARTING_LIVES,
 } from '@/game/scoring';
+import { SettingsSheet } from '@/game/SettingsSheet';
 import { DEFAULT_SKIN, SKINS } from '@/game/skins';
 import {
   commitRunResult,
   dailySeed,
   loadPersist,
+  setHapticsEnabled,
   setSoundMuted,
   todayKey,
 } from '@/game/storage';
@@ -45,15 +56,22 @@ import { VerticalMeter } from '@/game/VerticalMeter';
 
 const LOGO = require('../../assets/images/zone-meter-logo.png');
 const GAME_BG = require('../../assets/images/game-bg.png');
+const FEEDBACK_EMAIL = 'hello@zonemeter.com';
 
 /** Yellow pad surface in game-bg.png (fraction of image height from top). */
 const PAD_SURFACE_Y = 0.905;
 const METER_BASE_H = 340;
 const METER_WRAP_EXTRA = 28;
 /** Brief freeze after the meter lands so short zones can be read before fill. */
-const LEVEL_READ_PAUSE_MS = 192;
+const LEVEL_READ_PAUSE_MS = 139;
 
 type Phase = 'ready' | 'countdown' | 'filling' | 'result' | 'gameover';
+
+type PauseResume =
+  | { kind: 'fill'; fillAt: number }
+  | { kind: 'countdown'; countAt: number }
+  | { kind: 'startFill' }
+  | { kind: 'advance' };
 
 /** Callouts sit beside / near the meter top — never dead-center above it */
 type FeedbackSlot = 'left' | 'right' | 'topLeft' | 'topRight';
@@ -153,6 +171,7 @@ export function GameScreen() {
   const [stats, setStats] = useState<SessionStats>(emptyStats);
   const [feedback, setFeedback] = useState<Feedback | null>(null);
   const feedbackSlotRef = useRef<FeedbackSlot | null>(null);
+  const [settingsOpen, setSettingsOpen] = useState(false);
 
   const fill = useSharedValue(0);
   const zoneTarget = useSharedValue(round.target);
@@ -173,6 +192,13 @@ export function GameScreen() {
   const autoTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const countTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const advanceRef = useRef<() => void>(() => {});
+  /** True while settings sheet is open — game must not progress. */
+  const settingsPausedRef = useRef(false);
+  const countdownRef = useRef(3);
+  const pendingTimerRef = useRef<'countdown' | 'startFill' | 'advance' | null>(null);
+  const pauseResumeRef = useRef<PauseResume | null>(null);
+  const startFillRef = useRef<() => void>(() => {});
+  const runCountdownFromRef = useRef<(at: number) => void>(() => {});
 
   const skin = SKINS[persist?.equippedSkin ?? DEFAULT_SKIN];
 
@@ -195,7 +221,14 @@ export function GameScreen() {
   }, [combo]);
 
   useEffect(() => {
-    void loadPersist().then(setPersist);
+    countdownRef.current = countdown;
+  }, [countdown]);
+
+  useEffect(() => {
+    void loadPersist().then((state) => {
+      setPersist(state);
+      setGameHapticsEnabled(state.hapticsEnabled !== false);
+    });
     return () => {
       if (autoTimer.current) clearTimeout(autoTimer.current);
       if (countTimer.current) clearTimeout(countTimer.current);
@@ -283,7 +316,15 @@ export function GameScreen() {
           } else {
             // Continue run — next meter, no retry UI
             if (autoTimer.current) clearTimeout(autoTimer.current);
-            autoTimer.current = setTimeout(() => advanceRef.current(), 420);
+            pendingTimerRef.current = 'advance';
+            autoTimer.current = setTimeout(() => {
+              pendingTimerRef.current = null;
+              if (settingsPausedRef.current) {
+                pauseResumeRef.current = { kind: 'advance' };
+                return;
+              }
+              advanceRef.current();
+            }, 420);
           }
           return next;
         }
@@ -295,7 +336,15 @@ export function GameScreen() {
         phaseRef.current = 'result';
 
         if (autoTimer.current) clearTimeout(autoTimer.current);
-        autoTimer.current = setTimeout(() => advanceRef.current(), result.result === 'perfect' ? 380 : 480);
+        pendingTimerRef.current = 'advance';
+        autoTimer.current = setTimeout(() => {
+          pendingTimerRef.current = null;
+          if (settingsPausedRef.current) {
+            pauseResumeRef.current = { kind: 'advance' };
+            return;
+          }
+          advanceRef.current();
+        }, result.result === 'perfect' ? 380 : 480);
         return next;
       });
     },
@@ -303,6 +352,10 @@ export function GameScreen() {
   );
 
   const startFill = useCallback(() => {
+    if (settingsPausedRef.current) {
+      pauseResumeRef.current = { kind: 'startFill' };
+      return;
+    }
     const current = roundRef.current;
     setOutcome(null);
     setFeedback(null);
@@ -338,6 +391,55 @@ export function GameScreen() {
     );
   }, [fill, finishRound, isFilling, play, zoneHalf, zoneTarget]);
 
+  useEffect(() => {
+    startFillRef.current = startFill;
+  }, [startFill]);
+
+  const runCountdownFrom = useCallback(
+    (current: number) => {
+      if (countTimer.current) clearTimeout(countTimer.current);
+
+      if (current <= 0) {
+        pendingTimerRef.current = 'startFill';
+        countTimer.current = setTimeout(() => {
+          pendingTimerRef.current = null;
+          if (settingsPausedRef.current) {
+            pauseResumeRef.current = { kind: 'startFill' };
+            return;
+          }
+          startFillRef.current();
+        }, 520);
+        return;
+      }
+
+      pendingTimerRef.current = 'countdown';
+      countTimer.current = setTimeout(() => {
+        pendingTimerRef.current = null;
+        if (settingsPausedRef.current) {
+          pauseResumeRef.current = { kind: 'countdown', countAt: current };
+          return;
+        }
+        const next = current - 1;
+        setCountdown(next);
+        countdownRef.current = next;
+        if (next > 0) {
+          play('tick');
+          void gameHaptics.countdownTick(next);
+          runCountdownFromRef.current(next);
+        } else {
+          play('start');
+          void gameHaptics.countdownTick(0);
+          runCountdownFromRef.current(0);
+        }
+      }, 560);
+    },
+    [play],
+  );
+
+  useEffect(() => {
+    runCountdownFromRef.current = runCountdownFrom;
+  }, [runCountdownFrom]);
+
   const beginRound = useCallback(
     (next: RoundConfig, animateIn: boolean) => {
       setRound(next);
@@ -353,38 +455,28 @@ export function GameScreen() {
         setPhase('countdown');
         phaseRef.current = 'countdown';
         setCountdown(3);
+        countdownRef.current = 3;
         play('tick');
         void gameHaptics.countdownTick(3);
-
-        // 3 → 2 → 1 → GO! with rising energy
-        const beats = [2, 1, 0] as const;
-        let i = 0;
-        const tick = () => {
-          const n = beats[i];
-          i += 1;
-          setCountdown(n);
-          if (n > 0) {
-            play('tick');
-            void gameHaptics.countdownTick(n);
-            countTimer.current = setTimeout(tick, 560);
-            return;
-          }
-          // GO!
-          play('start');
-          void gameHaptics.countdownTick(0);
-          countTimer.current = setTimeout(() => {
-            startFill();
-          }, 520);
-        };
-        countTimer.current = setTimeout(tick, 560);
+        runCountdownFromRef.current(3);
         return;
       }
 
       // Later levels: land the meter, pause so the zone is readable, then fill
       const startAfterReadPause = () => {
+        if (settingsPausedRef.current) {
+          pauseResumeRef.current = { kind: 'startFill' };
+          return;
+        }
         if (countTimer.current) clearTimeout(countTimer.current);
+        pendingTimerRef.current = 'startFill';
         countTimer.current = setTimeout(() => {
-          startFill();
+          pendingTimerRef.current = null;
+          if (settingsPausedRef.current) {
+            pauseResumeRef.current = { kind: 'startFill' };
+            return;
+          }
+          startFillRef.current();
         }, LEVEL_READ_PAUSE_MS);
       };
 
@@ -402,7 +494,7 @@ export function GameScreen() {
         startAfterReadPause();
       }
     },
-    [fill, meterX, play, startFill, zoneHalf, zoneTarget],
+    [fill, meterX, play, zoneHalf, zoneTarget],
   );
 
   const spawnNextLevel = useCallback(() => {
@@ -413,15 +505,22 @@ export function GameScreen() {
     beginRound(next, true);
   }, [beginRound]);
 
+  const onMeterSlidOut = useCallback(() => {
+    if (settingsPausedRef.current) {
+      pauseResumeRef.current = { kind: 'advance' };
+      return;
+    }
+    spawnNextLevel();
+  }, [spawnNextLevel]);
+
   const advanceLevel = useCallback(() => {
     if (autoTimer.current) clearTimeout(autoTimer.current);
+    pendingTimerRef.current = null;
     // Slide current meter out, then bring next in
     meterX.value = withTiming(-360, { duration: 220, easing: Easing.in(Easing.cubic) }, (done) => {
-      if (done) {
-        runOnJS(spawnNextLevel)();
-      }
+      if (done) runOnJS(onMeterSlidOut)();
     });
-  }, [meterX, spawnNextLevel]);
+  }, [meterX, onMeterSlidOut]);
 
   useEffect(() => {
     advanceRef.current = advanceLevel;
@@ -444,6 +543,10 @@ export function GameScreen() {
   const startRun = (daily: boolean) => {
     if (countTimer.current) clearTimeout(countTimer.current);
     if (autoTimer.current) clearTimeout(autoTimer.current);
+    settingsPausedRef.current = false;
+    pauseResumeRef.current = null;
+    pendingTimerRef.current = null;
+    setSettingsOpen(false);
     cancelAnimation(meterX);
     cancelAnimation(fill);
     cancelAnimation(zoneTarget);
@@ -464,8 +567,130 @@ export function GameScreen() {
     beginRound(makeRound(1, { rng: rngRef.current }), false);
   };
 
+  const resumeFillFrom = useCallback(
+    (from: number) => {
+      const current = roundRef.current;
+      const remaining = Math.max(90, Math.round(current.fillMs * (1 - from)));
+      setPhase('filling');
+      phaseRef.current = 'filling';
+      isFilling.value = 1;
+      fill.value = from;
+      fill.value = withTiming(
+        1,
+        { duration: remaining, easing: Easing.bezier(0.2, 0.05, 0.35, 1) },
+        (finished) => {
+          if (finished) runOnJS(finishRound)(1);
+        },
+      );
+    },
+    [fill, finishRound, isFilling],
+  );
+
+  const openSettings = useCallback(() => {
+    void gameHaptics.next();
+    settingsPausedRef.current = true;
+
+    const p = phaseRef.current;
+    if (p === 'filling') {
+      const at = fill.value;
+      cancelAnimation(fill);
+      cancelAnimation(zoneTarget);
+      cancelAnimation(zoneHalf);
+      fill.value = at;
+      isFilling.value = 0;
+      pauseResumeRef.current = { kind: 'fill', fillAt: at };
+    } else if (p === 'countdown') {
+      pauseResumeRef.current = { kind: 'countdown', countAt: countdownRef.current };
+    } else if (pendingTimerRef.current === 'startFill') {
+      pauseResumeRef.current = { kind: 'startFill' };
+    } else if (pendingTimerRef.current === 'advance' || p === 'result') {
+      // Result auto-advance, or mid level-transition
+      if (pendingTimerRef.current === 'advance' || pauseResumeRef.current == null) {
+        if (livesRef.current > 0 && p === 'result') {
+          pauseResumeRef.current = { kind: 'advance' };
+        }
+      }
+    }
+
+    if (countTimer.current) {
+      clearTimeout(countTimer.current);
+      countTimer.current = null;
+    }
+    if (autoTimer.current) {
+      clearTimeout(autoTimer.current);
+      autoTimer.current = null;
+    }
+    pendingTimerRef.current = null;
+
+    // Freeze any in-flight meter slide
+    cancelAnimation(meterX);
+    if (pauseResumeRef.current?.kind === 'startFill') {
+      meterX.value = 0;
+    } else if (pauseResumeRef.current?.kind === 'advance') {
+      // Keep meter put until resume spawns the next level
+      meterX.value = meterX.value;
+    }
+
+    setSettingsOpen(true);
+  }, [fill, isFilling, meterX, zoneHalf, zoneTarget]);
+
+  const closeSettings = useCallback(() => {
+    setSettingsOpen(false);
+    settingsPausedRef.current = false;
+    const resume = pauseResumeRef.current;
+    pauseResumeRef.current = null;
+    if (!resume) return;
+
+    if (resume.kind === 'fill') {
+      resumeFillFrom(resume.fillAt);
+      return;
+    }
+    if (resume.kind === 'countdown') {
+      runCountdownFromRef.current(resume.countAt);
+      return;
+    }
+    if (resume.kind === 'startFill') {
+      meterX.value = 0;
+      startFillRef.current();
+      return;
+    }
+    if (resume.kind === 'advance') {
+      autoTimer.current = setTimeout(() => advanceRef.current(), 200);
+    }
+  }, [meterX, resumeFillFrom]);
+
+  const toggleSound = async () => {
+    const next = await setSoundMuted(!(persist?.soundMuted ?? false));
+    setPersist(next);
+    void gameHaptics.next();
+  };
+
+  const toggleHaptics = async () => {
+    const enabled = !(persist?.hapticsEnabled !== false);
+    setGameHapticsEnabled(enabled);
+    const next = await setHapticsEnabled(enabled);
+    setPersist(next);
+    if (enabled) void gameHaptics.next();
+  };
+
+  const sendFeedback = async () => {
+    void gameHaptics.next();
+    const subject = encodeURIComponent('Zone Meter feedback');
+    const url = `mailto:${FEEDBACK_EMAIL}?subject=${subject}`;
+    try {
+      const can = await Linking.canOpenURL(url);
+      if (!can) {
+        Alert.alert('Feedback', `Email us at ${FEEDBACK_EMAIL}`);
+        return;
+      }
+      await Linking.openURL(url);
+    } catch {
+      Alert.alert('Feedback', `Email us at ${FEEDBACK_EMAIL}`);
+    }
+  };
+
   const onTap = () => {
-    if (lockingTap.current) return;
+    if (settingsOpen || lockingTap.current) return;
     const p = phaseRef.current;
     if (p === 'countdown' || p === 'ready' || p === 'result') return;
 
@@ -487,11 +712,6 @@ export function GameScreen() {
     }
   };
 
-  const toggleMute = async () => {
-    const next = await setSoundMuted(!muted);
-    setPersist(next);
-  };
-
   const meterStyle = useAnimatedStyle(() => ({
     transform: [{ translateX: meterX.value }],
   }));
@@ -506,7 +726,7 @@ export function GameScreen() {
   const accuracy =
     stats.attempts > 0 ? Math.round((stats.hits / stats.attempts) * 100) : 0;
 
-  const hitEnabled = phase === 'filling';
+  const hitEnabled = phase === 'filling' && !settingsOpen;
   const meterScale = round.meterScale;
   const meterWrapH = METER_BASE_H * meterScale + METER_WRAP_EXTRA;
   // Pin meter base to the yellow pad in the background art
@@ -561,8 +781,13 @@ export function GameScreen() {
               ) : null}
             </View>
 
-            <Pressable style={styles.iconBtn} onPress={() => void toggleMute()} hitSlop={10}>
-              <Text style={styles.iconBtnText}>{muted ? '🔇' : '🔊'}</Text>
+            <Pressable style={styles.iconBtn} onPress={openSettings} hitSlop={10} accessibilityLabel="Settings">
+              <SymbolView
+                name={{ ios: 'gearshape.fill', android: 'settings', web: 'settings' }}
+                size={20}
+                tintColor={GameColors.white}
+                weight="bold"
+              />
             </Pressable>
           </View>
 
@@ -719,6 +944,16 @@ export function GameScreen() {
           android_ripple={{ color: 'transparent' }}
         />
       ) : null}
+
+      <SettingsSheet
+        visible={settingsOpen}
+        soundOn={!muted}
+        hapticsOn={persist?.hapticsEnabled !== false}
+        onClose={closeSettings}
+        onToggleSound={() => void toggleSound()}
+        onToggleHaptics={() => void toggleHaptics()}
+        onSendFeedback={() => void sendFeedback()}
+      />
     </View>
   );
 }
@@ -780,7 +1015,7 @@ const styles = StyleSheet.create({
     height: 40,
     borderRadius: 20,
     backgroundColor: GameColors.playBlue,
-    borderWidth: 2,
+    borderWidth: 2.5,
     borderColor: GameColors.ink,
     alignItems: 'center',
     justifyContent: 'center',
