@@ -79,7 +79,7 @@ export default function RootLayout() {
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: '#2B8FFF' },
+  root: { flex: 1, backgroundColor: '#0290FC' },
   splash: {
     position: 'absolute',
     left: 0,

@@ -1,5 +1,5 @@
 import { LinearGradient } from 'expo-linear-gradient';
-import { memo, useEffect } from 'react';
+import { memo, useEffect, useMemo } from 'react';
 import { StyleSheet, View } from 'react-native';
 import Animated, {
   Easing,
@@ -24,6 +24,7 @@ type Props = {
 
 const BASE_H = 340;
 const BASE_W = 100;
+const TICK_COUNT = 7;
 
 function VerticalMeterComponent({
   fill,
@@ -45,12 +46,17 @@ function VerticalMeterComponent({
     );
   }, [wobble]);
 
+  const ticks = useMemo(
+    () => Array.from({ length: TICK_COUNT }, (_, i) => (i + 1) / (TICK_COUNT + 1)),
+    [],
+  );
+
   const liquidStyle = useAnimatedStyle(() => ({
-    height: Math.max(12, fill.value * innerH),
+    height: Math.max(14, fill.value * innerH),
   }));
 
   const surfaceStyle = useAnimatedStyle(() => ({
-    transform: [{ translateY: (wobble.value - 0.5) * 3 }],
+    transform: [{ translateY: (wobble.value - 0.5) * 2.5 }],
   }));
 
   const zoneStyle = useAnimatedStyle(() => {
@@ -102,13 +108,58 @@ function VerticalMeterComponent({
           </Animated.View>
 
           <Animated.View style={[styles.liquidWrap, liquidStyle]}>
+            {/* Soft glow bleeding above the surface into empty glass */}
+            <LinearGradient
+              colors={['rgba(255,176,32,0)', 'rgba(255,176,32,0.55)', 'rgba(255,240,120,0.9)']}
+              locations={[0, 0.55, 1]}
+              style={styles.surfaceGlow}
+              pointerEvents="none"
+            />
+
             <LinearGradient
               colors={[...skin.liquid]}
-              locations={[0, 0.12, 0.4, 0.72, 1]}
+              locations={[0, 0.18, 0.42, 0.7, 1]}
               style={styles.fill}
             />
-            <Animated.View style={[styles.surface, surfaceStyle]} />
+
+            {/* Glass sheen on the liquid */}
+            <LinearGradient
+              colors={['rgba(255,255,255,0.38)', 'rgba(255,255,255,0.08)', 'rgba(255,255,255,0)']}
+              start={{ x: 0, y: 0.5 }}
+              end={{ x: 1, y: 0.5 }}
+              style={styles.liquidSheen}
+              pointerEvents="none"
+            />
+
+            <Animated.View style={[styles.surface, surfaceStyle]}>
+              <LinearGradient
+                colors={['#FFFFFF', '#FFF6A0', '#FFC94A']}
+                start={{ x: 0, y: 0.5 }}
+                end={{ x: 1, y: 0.5 }}
+                style={StyleSheet.absoluteFill}
+              />
+            </Animated.View>
           </Animated.View>
+
+          {/* Scale ticks — sit above liquid so they stay readable */}
+          <View style={styles.ticks} pointerEvents="none">
+            {ticks.map((t) => (
+              <View
+                key={t}
+                style={[
+                  styles.tick,
+                  {
+                    bottom: t * innerH,
+                    width: 10 * scale,
+                    height: Math.max(2, 2.5 * scale),
+                  },
+                ]}
+              />
+            ))}
+          </View>
+
+          {/* Inner glass highlight */}
+          <View style={styles.glassShine} pointerEvents="none" />
         </View>
       </View>
       <View
@@ -164,13 +215,15 @@ const styles = StyleSheet.create({
     position: 'absolute',
     left: 0,
     right: 0,
+    zIndex: 1,
   },
   liquidWrap: {
     position: 'absolute',
     left: 0,
     right: 0,
     bottom: 0,
-    overflow: 'hidden',
+    overflow: 'visible',
+    zIndex: 2,
   },
   fill: {
     position: 'absolute',
@@ -179,15 +232,58 @@ const styles = StyleSheet.create({
     top: 0,
     bottom: 0,
   },
+  liquidSheen: {
+    position: 'absolute',
+    left: 0,
+    top: 0,
+    bottom: 0,
+    width: '42%',
+  },
+  surfaceGlow: {
+    position: 'absolute',
+    left: -2,
+    right: -2,
+    top: -28,
+    height: 36,
+  },
   surface: {
     position: 'absolute',
     left: 0,
     right: 0,
+    top: -1,
+    height: 5,
+    borderRadius: 2,
+    overflow: 'hidden',
+    shadowColor: '#FFB020',
+    shadowOpacity: 0.95,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 0 },
+    elevation: 6,
+  },
+  ticks: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
     top: 0,
-    height: 12,
-    backgroundColor: 'rgba(255,255,255,0.5)',
-    borderTopLeftRadius: 16,
-    borderTopRightRadius: 16,
+    bottom: 0,
+    zIndex: 3,
+  },
+  tick: {
+    position: 'absolute',
+    right: 5,
+    marginBottom: -1,
+    borderRadius: 1,
+    backgroundColor: 'rgba(255,255,255,0.85)',
+  },
+  glassShine: {
+    position: 'absolute',
+    left: 5,
+    top: 10,
+    bottom: 10,
+    width: 9,
+    borderRadius: 999,
+    backgroundColor: 'rgba(255,255,255,0.14)',
+    zIndex: 4,
   },
   pipeBase: {
     height: 16,

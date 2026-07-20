@@ -14,7 +14,8 @@ export const SKINS: Record<SkinId, SkinDef> = {
     id: 'toxic',
     name: 'Toxic',
     cost: 0,
-    liquid: ['#E9FFE0', '#C8FF3D', '#39FF14', '#00C2A8', '#0A7A5C'],
+    // Top → bottom: hot yellow surface → lime → cyan base (matches art)
+    liquid: ['#FFE94A', '#B8FF2A', '#2DFF6A', '#00E0D0', '#00A8FF'],
     shell: '#73BF2E',
     shellDark: '#4E9A16',
   },

@@ -1,7 +1,6 @@
 import { Image } from 'expo-image';
-import { LinearGradient } from 'expo-linear-gradient';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import Animated, {
   cancelAnimation,
   Easing,
@@ -15,8 +14,7 @@ import Animated, {
 } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { GameColors, GameFonts, Gradients } from '@/constants/gameTheme';
-import { Clouds } from '@/game/Clouds';
+import { GameColors, GameFonts } from '@/constants/gameTheme';
 import { CountdownBurst } from '@/game/CountdownBurst';
 import { Hearts } from '@/game/Hearts';
 import { gameHaptics } from '@/game/haptics';
@@ -40,15 +38,42 @@ import type {
 import { useSounds } from '@/game/useSounds';
 import { VerticalMeter } from '@/game/VerticalMeter';
 
-const LOGO = require('@/assets/images/zone-meter-logo.png');
+const LOGO = require('../../assets/images/zone-meter-logo.png');
+const GAME_BG = require('../../assets/images/game-bg.png');
+
+/** Yellow pad surface in game-bg.png (fraction of image height from top). */
+const PAD_SURFACE_Y = 0.905;
+const METER_BASE_H = 340;
+const METER_WRAP_EXTRA = 28;
 
 type Phase = 'ready' | 'countdown' | 'filling' | 'result' | 'gameover';
+
+/** Callouts sit beside / near the meter top — never dead-center above it */
+type FeedbackSlot = 'left' | 'right' | 'topLeft' | 'topRight';
 
 type Feedback = {
   label: RoundLabel;
   points: number;
   combo: number;
   comboGrew: boolean;
+  slot: FeedbackSlot;
+};
+
+const FEEDBACK_SLOTS: FeedbackSlot[] = ['left', 'right', 'topLeft', 'topRight'];
+
+function nextFeedbackSlot(prev: FeedbackSlot | null): FeedbackSlot {
+  const pool = prev ? FEEDBACK_SLOTS.filter((s) => s !== prev) : FEEDBACK_SLOTS;
+  return pool[Math.floor(Math.random() * pool.length)]!;
+}
+
+const FEEDBACK_SLOT_STYLE: Record<
+  FeedbackSlot,
+  { top: `${number}%`; left?: number; right?: number; alignItems: 'flex-start' | 'flex-end' }
+> = {
+  left: { top: '44%', left: 10, alignItems: 'flex-start' },
+  right: { top: '44%', right: 10, alignItems: 'flex-end' },
+  topLeft: { top: '30%', left: 10, alignItems: 'flex-start' },
+  topRight: { top: '30%', right: 10, alignItems: 'flex-end' },
 };
 
 const emptyStats = (): SessionStats => ({
@@ -69,8 +94,41 @@ const LABEL_COLORS: Record<RoundLabel, string> = {
   Miss: '#6B7280',
 };
 
+type GameCtaProps = {
+  label: string;
+  subtitle?: string;
+  face: string;
+  depth: string;
+  onPress: () => void;
+};
+
+/** Chunky casual-game CTA — 3D lip + press squash */
+function GameCta({ label, subtitle, face, depth, onPress }: GameCtaProps) {
+  return (
+    <Pressable
+      onPress={onPress}
+      style={({ pressed }) => [styles.ctaPressable, pressed && styles.ctaPressableDown]}>
+      {({ pressed }) => (
+        <View style={[styles.ctaShell, { backgroundColor: depth }]}>
+          <View
+            style={[
+              styles.ctaFace,
+              { backgroundColor: face },
+              pressed ? styles.ctaFaceDown : styles.ctaFaceUp,
+            ]}>
+            <View style={styles.ctaShine} />
+            <Text style={styles.ctaText}>{label}</Text>
+            {subtitle ? <Text style={styles.ctaSub}>{subtitle}</Text> : null}
+          </View>
+        </View>
+      )}
+    </Pressable>
+  );
+}
+
 export function GameScreen() {
   const insets = useSafeAreaInsets();
+  const { height: windowH } = useWindowDimensions();
   const [persist, setPersist] = useState<PersistState | null>(null);
   const muted = Boolean(persist?.soundMuted);
   const { play } = useSounds(muted);
@@ -86,6 +144,7 @@ export function GameScreen() {
   const [dailyMode, setDailyMode] = useState(false);
   const [stats, setStats] = useState<SessionStats>(emptyStats);
   const [feedback, setFeedback] = useState<Feedback | null>(null);
+  const feedbackSlotRef = useRef<FeedbackSlot | null>(null);
 
   const fill = useSharedValue(0);
   const zoneTarget = useSharedValue(round.target);
@@ -135,8 +194,10 @@ export function GameScreen() {
     };
   }, []);
 
-  const showFeedback = (next: Feedback) => {
-    setFeedback(next);
+  const showFeedback = (next: Omit<Feedback, 'slot'>) => {
+    const slot = nextFeedbackSlot(feedbackSlotRef.current);
+    feedbackSlotRef.current = slot;
+    setFeedback({ ...next, slot });
     feedbackOpacity.value = 0;
     feedbackScale.value = 0.55;
     feedbackOpacity.value = withSequence(
@@ -397,14 +458,6 @@ export function GameScreen() {
       requestAnimationFrame(() => {
         lockingTap.current = false;
       });
-      return;
-    }
-
-    if (p === 'gameover') {
-      lockingTap.current = true;
-      void gameHaptics.next();
-      startRun(dailyMode);
-      lockingTap.current = false;
     }
   };
 
@@ -418,10 +471,7 @@ export function GameScreen() {
   }));
   const feedbackStyle = useAnimatedStyle(() => ({
     opacity: feedbackOpacity.value,
-    transform: [
-      { scale: feedbackScale.value },
-      { translateY: (1 - feedbackOpacity.value) * 12 },
-    ],
+    transform: [{ scale: feedbackScale.value }],
   }));
   const comboBadgeStyle = useAnimatedStyle(() => ({
     transform: [{ scale: comboPulse.value }],
@@ -430,148 +480,197 @@ export function GameScreen() {
   const accuracy =
     stats.attempts > 0 ? Math.round((stats.hits / stats.attempts) * 100) : 0;
 
-  // Game-over copy only — countdown is a full-screen burst
-  const prompt =
-    phase === 'gameover' ? (isNewBest ? 'NEW BEST!' : 'GAME OVER') : '';
-
-  const hitEnabled = phase === 'filling' || phase === 'gameover';
-
-  const headerHeight = insets.top + 148;
+  const hitEnabled = phase === 'filling';
+  const meterScale = round.meterScale;
+  const meterWrapH = METER_BASE_H * meterScale + METER_WRAP_EXTRA;
+  // Pin meter base to the yellow pad in the background art
+  const meterBottom = Math.max(insets.bottom + 4, windowH * (1 - PAD_SURFACE_Y));
+  const menuBottom = meterBottom + meterWrapH * 0.42;
 
   return (
     <View style={styles.root}>
-      {/* Sky header only — logo / lives / best stay on blue */}
-      <View style={[styles.headerBand, { height: headerHeight }]} pointerEvents="none">
-        <LinearGradient
-          colors={[...Gradients.sky]}
-          locations={[...Gradients.skyStops]}
-          style={StyleSheet.absoluteFill}
+      <View style={styles.backdrop} pointerEvents="none">
+        <Image
+          source={GAME_BG}
+          style={styles.backdropImage}
+          contentFit="cover"
+          contentPosition="center"
+          priority="high"
+          cachePolicy="memory-disk"
+          recyclingKey="game-bg-v2"
         />
-        <Clouds />
-      </View>
-
-      {/* Tap / play field — zone green under the header */}
-      <LinearGradient
-        colors={[...Gradients.playZone]}
-        locations={[...Gradients.playZoneStops]}
-        style={[styles.playZone, { top: headerHeight - 28 }]}
-        pointerEvents="none"
-      />
-      <View style={[styles.playZoneLip, { top: headerHeight - 28 }]} pointerEvents="none" />
-
-      <View style={[styles.ground, { height: 44 + insets.bottom }]}>
-        <View style={styles.hazard} />
       </View>
 
       <View
-        style={[styles.content, { paddingTop: insets.top + 8, paddingBottom: insets.bottom + 14 }]}
-        pointerEvents="box-none">
-        <View style={styles.topRow} pointerEvents="box-none">
-          <View pointerEvents="none">
-            {phase !== 'ready' ? (
-              <>
-                <Image source={LOGO} style={styles.logoHud} contentFit="contain" />
-                <Hearts lives={lives} max={STARTING_LIVES} />
-              </>
-            ) : (
-              <View style={styles.logoHudPlaceholder} />
-            )}
-          </View>
+        style={[
+          styles.meterAnchor,
+          {
+            bottom: meterBottom,
+            height: meterWrapH,
+          },
+          phase === 'gameover' && styles.meterDimmed,
+        ]}
+        pointerEvents="none">
+        <Animated.View style={meterStyle}>
+          <VerticalMeter
+            fill={fill}
+            zoneTarget={zoneTarget}
+            zoneHalf={zoneHalf}
+            skin={skin}
+            scale={meterScale}
+          />
+        </Animated.View>
+      </View>
 
-          <View style={styles.topRight} pointerEvents="box-none">
+      <View
+        style={[styles.content, { paddingTop: insets.top + 8 }]}
+        pointerEvents="box-none"
+        collapsable={false}>
+        <View style={styles.topBlock} pointerEvents="box-none">
+          <View style={styles.topRow} pointerEvents="box-none">
+            <View style={styles.topLeft} pointerEvents="none">
+              <Image source={LOGO} style={styles.logoHud} contentFit="contain" />
+              {phase !== 'ready' && phase !== 'gameover' ? (
+                <Hearts lives={lives} max={STARTING_LIVES} />
+              ) : null}
+            </View>
+
             <Pressable style={styles.iconBtn} onPress={() => void toggleMute()} hitSlop={10}>
               <Text style={styles.iconBtnText}>{muted ? '🔇' : '🔊'}</Text>
             </Pressable>
-            <View style={styles.bestPill} pointerEvents="none">
-              <Text style={styles.bestLabel}>{dailyMode ? 'DAILY' : 'BEST'}</Text>
-              <Text style={styles.bestValue}>
-                {dailyMode
-                  ? persist?.dailyBest.date === todayKey()
-                    ? persist.dailyBest.score
-                    : 0
-                  : (persist?.highScore ?? 0)}
-              </Text>
-              {!dailyMode ? (
-                <Text style={styles.bestSub}>LVL {persist?.bestLevel ?? 0}</Text>
-              ) : null}
-            </View>
+          </View>
+
+          <View style={styles.bestPill} pointerEvents="none">
+            <Text style={styles.bestLabel}>{dailyMode ? 'DAILY' : 'BEST'}</Text>
+            <Text style={styles.bestValue}>
+              {dailyMode
+                ? persist?.dailyBest.date === todayKey()
+                  ? persist.dailyBest.score
+                  : 0
+                : (persist?.highScore ?? 0)}
+            </Text>
+            {!dailyMode ? (
+              <Text style={styles.bestSub}>LVL {persist?.bestLevel ?? 0}</Text>
+            ) : null}
           </View>
         </View>
 
-        <View style={styles.statsBlock} pointerEvents="none">
-          {phase === 'ready' ? (
-            <Image source={LOGO} style={styles.logoHero} contentFit="contain" />
-          ) : (
-            <>
-              <Text style={styles.bigScore}>{score}</Text>
-              <Text style={styles.metaLine}>LVL {round.level}</Text>
-              {combo > 0 && phase !== 'gameover' ? (
-                <Animated.View style={[styles.comboBadge, comboBadgeStyle]}>
-                  <Text style={styles.comboBadgeLabel}>COMBO</Text>
-                  <Text style={styles.comboBadgeValue}>
-                    x{combo} · {comboMultiplier(combo).toFixed(2)}
-                  </Text>
-                </Animated.View>
-              ) : null}
-            </>
-          )}
-        </View>
-
-        <View style={styles.meterStage}>
-          <Animated.View style={[styles.feedback, feedbackStyle]} pointerEvents="none">
-            {feedback ? (
+        {phase !== 'ready' ? (
+          <View style={styles.statsBlock} pointerEvents="none">
+            <Text style={styles.bigScore}>{score}</Text>
+            {phase === 'gameover' ? (
+              <View style={styles.runStats}>
+                <View style={styles.runStat}>
+                  <Text style={styles.runStatLabel}>ACC</Text>
+                  <Text style={styles.runStatValue}>{accuracy}%</Text>
+                </View>
+                <View style={styles.runStatDivider} />
+                <View style={styles.runStat}>
+                  <Text style={styles.runStatLabel}>COMBO</Text>
+                  <Text style={styles.runStatValue}>{stats.bestCombo}</Text>
+                </View>
+                <View style={styles.runStatDivider} />
+                <View style={styles.runStat}>
+                  <Text style={styles.runStatLabel}>LVL</Text>
+                  <Text style={styles.runStatValue}>{round.level}</Text>
+                </View>
+              </View>
+            ) : (
               <>
-                <Text style={[styles.feedbackLabel, { color: LABEL_COLORS[feedback.label] }]}>
-                  {feedback.label.toUpperCase()}!
-                </Text>
-                {feedback.points > 0 ? (
-                  <Text style={styles.feedbackPoints}>+{feedback.points}</Text>
-                ) : null}
-                {feedback.comboGrew && feedback.combo > 1 ? (
-                  <Text style={styles.feedbackCombo}>COMBO x{feedback.combo}</Text>
-                ) : feedback.comboGrew && feedback.combo === 1 ? (
-                  <Text style={styles.feedbackCombo}>COMBO START</Text>
+                <Text style={styles.metaLine}>LVL {round.level}</Text>
+                {combo > 1 ? (
+                  <Animated.View style={[styles.comboBadge, comboBadgeStyle]}>
+                    <Text style={styles.comboBadgeLabel}>COMBO</Text>
+                    <Text style={styles.comboBadgeValue}>
+                      x{combo} · {comboMultiplier(combo).toFixed(2)}
+                    </Text>
+                  </Animated.View>
                 ) : null}
               </>
-            ) : null}
-          </Animated.View>
+            )}
+          </View>
+        ) : null}
 
-          <Animated.View style={meterStyle}>
-            <VerticalMeter
-              fill={fill}
-              zoneTarget={zoneTarget}
-              zoneHalf={zoneHalf}
-              skin={skin}
-              scale={round.meterScale}
+        <Animated.View
+          style={[
+            styles.feedback,
+            feedback ? FEEDBACK_SLOT_STYLE[feedback.slot] : null,
+            feedbackStyle,
+            phase === 'gameover' && styles.hidden,
+          ]}
+          pointerEvents="none">
+          {feedback ? (
+            <>
+              <Text
+                style={[
+                  styles.feedbackLabel,
+                  { color: LABEL_COLORS[feedback.label] },
+                  (feedback.slot === 'left' || feedback.slot === 'topLeft') && styles.feedbackAlignStart,
+                  (feedback.slot === 'right' || feedback.slot === 'topRight') && styles.feedbackAlignEnd,
+                ]}>
+                {feedback.label.toUpperCase()}!
+              </Text>
+              {feedback.points > 0 ? (
+                <Text
+                  style={[
+                    styles.feedbackPoints,
+                    (feedback.slot === 'left' || feedback.slot === 'topLeft') && styles.feedbackAlignStart,
+                    (feedback.slot === 'right' || feedback.slot === 'topRight') && styles.feedbackAlignEnd,
+                  ]}>
+                  +{feedback.points}
+                </Text>
+              ) : null}
+              {feedback.comboGrew && feedback.combo > 1 ? (
+                <Text
+                  style={[
+                    styles.feedbackCombo,
+                    (feedback.slot === 'left' || feedback.slot === 'topLeft') && styles.feedbackAlignStart,
+                    (feedback.slot === 'right' || feedback.slot === 'topRight') && styles.feedbackAlignEnd,
+                  ]}>
+                  COMBO x{feedback.combo}
+                </Text>
+              ) : null}
+            </>
+          ) : null}
+        </Animated.View>
+
+        <CountdownBurst value={countdown} visible={phase === 'countdown'} />
+
+        {phase === 'gameover' ? (
+          <View style={styles.gameOverPanel} pointerEvents="box-none">
+            <Text
+              style={[styles.gameOverTitle, isNewBest && styles.gameOverTitleBest]}
+              pointerEvents="none">
+              {isNewBest ? 'NEW BEST!' : 'GAME OVER'}
+            </Text>
+            <GameCta
+              label="RETRY"
+              face={isNewBest ? GameColors.bubble : GameColors.playBlue}
+              depth={isNewBest ? GameColors.bubbleDark : GameColors.playBlueDark}
+              onPress={() => {
+                void gameHaptics.next();
+                startRun(dailyMode);
+              }}
             />
-          </Animated.View>
+          </View>
+        ) : null}
 
-          <CountdownBurst value={countdown} visible={phase === 'countdown'} />
-        </View>
-
-        {prompt || phase === 'gameover' ? (
-          <Text style={[styles.prompt, styles.promptOver]} pointerEvents="none">
-            {prompt}
-            {phase === 'gameover'
-              ? `\nAcc ${accuracy}% · Combo ${stats.bestCombo} · LVL ${round.level}`
-              : ''}
-          </Text>
-        ) : (
-          <View style={styles.promptSpacer} pointerEvents="none" />
-        )}
-
-        {phase === 'ready' || phase === 'gameover' ? (
-          <View style={styles.menuCol} pointerEvents="auto">
-            <Pressable style={styles.ctaFace} onPress={() => startRun(false)}>
-              <Text style={styles.ctaText}>{phase === 'gameover' ? 'RETRY' : 'PLAY'}</Text>
-            </Pressable>
-            {phase === 'ready' ? (
-              <Pressable
-                style={[styles.ctaFace, styles.ctaSecondary]}
-                onPress={() => startRun(true)}>
-                <Text style={styles.ctaText}>DAILY</Text>
-              </Pressable>
-            ) : null}
+        {phase === 'ready' ? (
+          <View style={[styles.menuCol, { bottom: menuBottom }]} pointerEvents="box-none">
+            <GameCta
+              label="PLAY"
+              subtitle="TAP THE ZONE"
+              face="#FFC800"
+              depth="#D97706"
+              onPress={() => startRun(false)}
+            />
+            <GameCta
+              label="DAILY"
+              subtitle="ONE RUN · SHARED SEED"
+              face={GameColors.bubble}
+              depth={GameColors.bubbleDark}
+              onPress={() => startRun(true)}
+            />
           </View>
         ) : null}
       </View>
@@ -588,91 +687,71 @@ export function GameScreen() {
   );
 }
 
+const fillParent = {
+  position: 'absolute' as const,
+  left: 0,
+  right: 0,
+  top: 0,
+  bottom: 0,
+};
+
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: GameColors.skyTop },
-  headerBand: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    top: 0,
-    overflow: 'hidden',
+  root: { flex: 1, backgroundColor: '#1E8CFF' },
+  backdrop: {
+    ...fillParent,
     zIndex: 0,
   },
-  playZone: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    bottom: 0,
-    borderTopLeftRadius: 36,
-    borderTopRightRadius: 36,
-    zIndex: 0,
-  },
-  playZoneLip: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    height: 4,
-    borderTopLeftRadius: 36,
-    borderTopRightRadius: 36,
-    backgroundColor: 'rgba(26,28,44,0.18)',
-    zIndex: 0,
+  backdropImage: {
+    width: '100%',
+    height: '100%',
   },
   hitLayer: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    top: 0,
-    bottom: 0,
-    zIndex: 10,
+    ...fillParent,
+    zIndex: 20,
   },
-  content: { flex: 1, paddingHorizontal: 20, zIndex: 1 },
-  ground: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    bottom: 0,
-    backgroundColor: GameColors.ground,
-    zIndex: 0,
+  content: {
+    ...fillParent,
+    paddingHorizontal: 20,
+    zIndex: 30,
+    elevation: 30,
   },
-  hazard: {
-    height: 14,
-    backgroundColor: GameColors.groundStripe,
-    borderTopWidth: 3,
-    borderColor: GameColors.ink,
+  topBlock: {
+    width: '100%',
+    gap: 6,
   },
   topRow: {
     width: '100%',
     flexDirection: 'row',
+    alignItems: 'center',
     justifyContent: 'space-between',
+    gap: 10,
+    minHeight: 40,
   },
-  topRight: { alignItems: 'flex-end', gap: 6 },
+  topLeft: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingRight: 4,
+  },
   logoHud: {
-    width: 128,
-    height: 70,
+    width: 148,
+    height: 78,
     marginLeft: -6,
   },
-  logoHudPlaceholder: {
-    width: 128,
-    height: 8,
-  },
-  logoHero: {
-    width: 280,
-    height: 168,
-    marginTop: 4,
-  },
   iconBtn: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
     backgroundColor: GameColors.playBlue,
     borderWidth: 2,
     borderColor: GameColors.ink,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 2,
   },
   iconBtnText: { fontSize: 16 },
   bestPill: {
+    alignSelf: 'flex-end',
     paddingHorizontal: 14,
     paddingVertical: 7,
     borderRadius: 14,
@@ -702,17 +781,51 @@ const styles = StyleSheet.create({
   statsBlock: { marginTop: 2, alignItems: 'center' },
   bigScore: {
     fontFamily: GameFonts.display,
-    fontSize: 48,
-    lineHeight: 52,
+    fontSize: 52,
+    lineHeight: 56,
     color: GameColors.white,
-    textShadowColor: 'rgba(26,28,44,0.35)',
-    textShadowOffset: { width: 0, height: 2 },
+    textShadowColor: 'rgba(26,28,44,0.4)',
+    textShadowOffset: { width: 0, height: 3 },
     textShadowRadius: 0,
   },
   metaLine: {
     fontFamily: GameFonts.body,
     fontSize: 15,
     color: GameColors.ink,
+  },
+  runStats: {
+    marginTop: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255,255,255,0.94)',
+    borderRadius: 16,
+    borderWidth: 2.5,
+    borderColor: GameColors.ink,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    gap: 12,
+  },
+  runStat: {
+    alignItems: 'center',
+    minWidth: 52,
+  },
+  runStatLabel: {
+    fontFamily: GameFonts.soft,
+    fontSize: 11,
+    color: GameColors.panelInk,
+    letterSpacing: 0.6,
+  },
+  runStatValue: {
+    fontFamily: GameFonts.display,
+    fontSize: 20,
+    lineHeight: 24,
+    color: GameColors.ink,
+  },
+  runStatDivider: {
+    width: 2,
+    height: 28,
+    borderRadius: 1,
+    backgroundColor: 'rgba(26,28,44,0.15)',
   },
   comboBadge: {
     marginTop: 6,
@@ -737,75 +850,137 @@ const styles = StyleSheet.create({
     lineHeight: 22,
     color: GameColors.ink,
   },
-  meterStage: {
-    flex: 1,
+  meterAnchor: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+    zIndex: 1,
+  },
+  meterDimmed: {
+    opacity: 0.28,
+  },
+  hidden: { opacity: 0 },
+  gameOverPanel: {
+    ...fillParent,
     alignItems: 'center',
     justifyContent: 'center',
-    width: '100%',
+    zIndex: 40,
+    gap: 18,
+    paddingHorizontal: 24,
+  },
+  gameOverTitle: {
+    fontFamily: GameFonts.display,
+    fontSize: 52,
+    lineHeight: 56,
+    textAlign: 'center',
+    color: '#FF4B4B',
+    textShadowColor: GameColors.ink,
+    textShadowOffset: { width: 0, height: 4 },
+    textShadowRadius: 0,
+  },
+  gameOverTitleBest: {
+    color: GameColors.lemon,
   },
   feedback: {
     position: 'absolute',
-    left: 12,
-    right: 12,
-    top: '18%',
-    zIndex: 8,
-    alignItems: 'center',
+    zIndex: 35,
+    maxWidth: '46%',
   },
+  feedbackAlignStart: { textAlign: 'left' },
+  feedbackAlignEnd: { textAlign: 'right' },
   feedbackLabel: {
     fontFamily: GameFonts.display,
-    fontSize: 44,
-    lineHeight: 48,
-    textAlign: 'center',
-    textShadowColor: 'rgba(255,255,255,0.85)',
+    fontSize: 28,
+    lineHeight: 32,
+    textShadowColor: GameColors.ink,
     textShadowOffset: { width: 0, height: 2 },
     textShadowRadius: 0,
   },
   feedbackPoints: {
     marginTop: 2,
     fontFamily: GameFonts.body,
-    fontSize: 22,
-    color: GameColors.ink,
-  },
-  feedbackCombo: {
-    marginTop: 4,
-    fontFamily: GameFonts.display,
-    fontSize: 24,
-    lineHeight: 28,
-    color: GameColors.lemon,
+    fontSize: 18,
+    color: GameColors.white,
     textShadowColor: GameColors.ink,
-    textShadowOffset: { width: 0, height: 1 },
+    textShadowOffset: { width: 0, height: 2 },
     textShadowRadius: 0,
   },
-  prompt: {
-    fontFamily: GameFonts.body,
-    fontSize: 16,
-    color: GameColors.ink,
-    textAlign: 'center',
-    minHeight: 40,
-    marginBottom: 6,
+  feedbackCombo: {
+    marginTop: 3,
+    fontFamily: GameFonts.display,
+    fontSize: 18,
+    lineHeight: 22,
+    color: GameColors.lemon,
+    textShadowColor: GameColors.ink,
+    textShadowOffset: { width: 0, height: 2 },
+    textShadowRadius: 0,
   },
-  promptSpacer: {
-    minHeight: 40,
-    marginBottom: 22,
+  menuCol: {
+    position: 'absolute',
+    left: 28,
+    right: 28,
+    gap: 14,
+    zIndex: 40,
+    alignItems: 'center',
   },
-  promptOver: {
-    marginBottom: 10,
+  ctaPressable: {
+    width: '100%',
+    maxWidth: 320,
   },
-  menuCol: { width: '90%', alignSelf: 'center', gap: 10, zIndex: 30 },
-  ctaFace: {
-    height: 52,
-    borderRadius: 18,
-    backgroundColor: GameColors.playBlue,
-    borderWidth: 3,
+  ctaPressableDown: {
+    transform: [{ scale: 0.97 }],
+  },
+  ctaShell: {
+    borderRadius: 22,
+    borderWidth: 4,
     borderColor: GameColors.ink,
+    overflow: 'hidden',
+  },
+  ctaFace: {
+    minHeight: 64,
+    paddingHorizontal: 20,
+    paddingTop: 10,
+    paddingBottom: 12,
     alignItems: 'center',
     justifyContent: 'center',
+    overflow: 'hidden',
   },
-  ctaSecondary: { backgroundColor: GameColors.bubble },
+  ctaFaceUp: {
+    marginBottom: 5,
+    borderBottomWidth: 0,
+  },
+  ctaFaceDown: {
+    marginBottom: 0,
+    marginTop: 5,
+  },
+  ctaShine: {
+    position: 'absolute',
+    left: 10,
+    right: 10,
+    top: 6,
+    height: 14,
+    borderRadius: 10,
+    backgroundColor: 'rgba(255,255,255,0.28)',
+  },
   ctaText: {
-    fontFamily: GameFonts.body,
-    fontSize: 20,
+    fontFamily: GameFonts.display,
+    fontSize: 30,
+    lineHeight: 34,
     color: GameColors.white,
+    letterSpacing: 1.5,
+    textShadowColor: 'rgba(26,28,44,0.35)',
+    textShadowOffset: { width: 0, height: 2 },
+    textShadowRadius: 0,
+  },
+  ctaSub: {
+    marginTop: 1,
+    fontFamily: GameFonts.soft,
+    fontSize: 12,
+    lineHeight: 14,
+    color: 'rgba(255,255,255,0.92)',
+    letterSpacing: 0.8,
   },
 });
 

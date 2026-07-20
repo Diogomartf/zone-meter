@@ -15,11 +15,12 @@ type Props = {
   visible: boolean;
 };
 
+/** Warm high-contrast colors — avoid blues that disappear on the sky bg */
 const COLORS: Record<number, string> = {
-  3: '#1CB0F6',
-  2: '#FFC800',
-  1: '#FF6A3D',
-  0: '#58CC02',
+  3: '#FFE14A',
+  2: '#FF8A00',
+  1: '#FF4B4B',
+  0: '#FFFFFF',
 };
 
 export function CountdownBurst({ value, visible }: Props) {
@@ -65,14 +66,7 @@ export function CountdownBurst({ value, visible }: Props) {
   return (
     <View style={styles.wrap} pointerEvents="none">
       <Animated.View style={[styles.burst, style]}>
-        <Text
-          style={[
-            styles.text,
-            value === 0 && styles.goText,
-            { color, textShadowColor: 'rgba(255,255,255,0.9)' },
-          ]}>
-          {label}
-        </Text>
+        <Text style={[styles.text, value === 0 && styles.goText, { color }]}>{label}</Text>
         {value === 0 ? <Text style={styles.sub}>LET'S GO</Text> : null}
       </Animated.View>
     </View>
@@ -88,7 +82,7 @@ const styles = StyleSheet.create({
     bottom: 0,
     alignItems: 'center',
     justifyContent: 'center',
-    zIndex: 12,
+    zIndex: 35,
   },
   burst: {
     alignItems: 'center',
@@ -101,7 +95,8 @@ const styles = StyleSheet.create({
     fontSize: 96,
     lineHeight: 100,
     textAlign: 'center',
-    textShadowOffset: { width: 0, height: 3 },
+    textShadowColor: GameColors.ink,
+    textShadowOffset: { width: 0, height: 4 },
     textShadowRadius: 0,
   },
   goText: {
@@ -112,7 +107,10 @@ const styles = StyleSheet.create({
     marginTop: 2,
     fontFamily: GameFonts.body,
     fontSize: 18,
-    color: GameColors.ink,
+    color: GameColors.lemon,
     letterSpacing: 1,
+    textShadowColor: GameColors.ink,
+    textShadowOffset: { width: 0, height: 2 },
+    textShadowRadius: 0,
   },
 });

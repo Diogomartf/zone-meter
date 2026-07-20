@@ -26,7 +26,10 @@ export function scoreFill(
   const live = zoneAt(round, fill);
   const distance = Math.abs(fill - live.target);
   const levelBonus = 1 + (round.level - 1) * 0.045;
-  const mult = comboMultiplier(comboBefore);
+  // Level 1 teaches the tap — combo kicks in from level 2
+  const comboActive = round.level > 1;
+  const streak = comboActive ? comboBefore : 0;
+  const mult = comboMultiplier(streak);
 
   if (distance <= live.perfectHalf) {
     const basePoints = Math.round(100 * levelBonus);
@@ -38,9 +41,9 @@ export function scoreFill(
       basePoints,
       points,
       distance,
-      combo: comboBefore + 1,
+      combo: comboActive ? streak + 1 : 0,
       multiplier: mult,
-      coins: 5 + Math.floor(comboBefore / 2),
+      coins: 5 + Math.floor(streak / 2),
       costsLife: false,
     };
   }
@@ -50,7 +53,7 @@ export function scoreFill(
     const label: RoundLabel = t >= 0.66 ? 'Great' : t >= 0.33 ? 'Good' : 'Nice';
     const basePoints = Math.round((20 + t * 60) * levelBonus);
     const points = Math.round(basePoints * mult);
-    const combo = nextCombo(comboBefore, label);
+    const combo = comboActive ? nextCombo(streak, label) : 0;
     return {
       result: 'zone',
       label,
@@ -78,7 +81,7 @@ export function scoreFill(
       basePoints,
       points,
       distance,
-      combo: nextCombo(comboBefore, 'Close'),
+      combo: comboActive ? nextCombo(streak, 'Close') : 0,
       multiplier: mult,
       coins: 1,
       costsLife: false,
