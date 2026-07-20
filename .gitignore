@@ -38,6 +38,9 @@ pnpm-lock.yaml
 # local env files
 .env*.local
 
+# Google Play / EAS credentials (never commit)
+credentials/
+
 # typescript
 *.tsbuildinfo
 
