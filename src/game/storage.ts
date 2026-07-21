@@ -63,6 +63,15 @@ export async function savePersist(state: PersistState): Promise<void> {
   await AsyncStorage.setItem(KEY, JSON.stringify(state));
 }
 
+/** Wipe all saved progress and return fresh defaults. */
+export async function clearPersist(): Promise<PersistState> {
+  await AsyncStorage.removeItem(KEY);
+  return {
+    ...DEFAULT_STATE,
+    unlockedSkins: [...DEFAULT_STATE.unlockedSkins],
+  };
+}
+
 export async function commitRunResult(input: {
   score: number;
   coinsEarned: number;

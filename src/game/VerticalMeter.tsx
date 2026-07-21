@@ -1,6 +1,6 @@
-import { LinearGradient } from 'expo-linear-gradient';
-import { memo, useEffect, useMemo } from 'react';
-import { StyleSheet, View } from 'react-native';
+import { LinearGradient } from "expo-linear-gradient";
+import { memo, useEffect, useMemo } from "react";
+import { StyleSheet, View } from "react-native";
 import Animated, {
   Easing,
   useAnimatedStyle,
@@ -8,10 +8,10 @@ import Animated, {
   withRepeat,
   withTiming,
   type SharedValue,
-} from 'react-native-reanimated';
+} from "react-native-reanimated";
 
-import { GameColors } from '@/constants/gameTheme';
-import type { SkinDef } from '@/game/skins';
+import { GameColors } from "@/constants/gameTheme";
+import type { SkinDef } from "@/game/skins";
 
 type Props = {
   fill: SharedValue<number>;
@@ -30,11 +30,14 @@ const BASE_H = 340;
 const BASE_W = 100;
 const TICK_COUNT = 7;
 
-/** Bauhaus bullseye — blue Nice, red Great, yellow Perfect line */
+/** Glossy toy bullseye — Nice, red Great, yellow Perfect line */
 const EYE = {
-  nice: '#1B3A8C',
-  great: '#E24B2D',
-  perfect: '#FFE14A',
+  nice: "#6a219bc9",
+  great: "#f15c2e",
+  /** Soft mid-tone for Great → Nice falloff */
+  greatFade: "#c44a5a",
+  niceFade: "#6a3a8a",
+  perfect: "#FFE44A",
 } as const;
 
 function VerticalMeterComponent({
@@ -52,33 +55,45 @@ function VerticalMeterComponent({
   const wobble = useSharedValue(0);
 
   const pRatio = Math.min(Math.max(perfectRatio, 0.06), 0.28);
-  const gRatio = Math.min(Math.max(greatRatio, pRatio + 0.08), 0.85);
-  const niceFlex = Math.max(0.08, 1 - gRatio);
-  const greatFlex = Math.max(0.08, gRatio - pRatio);
-  const perfectFlex = Math.max(0.1, pRatio * 2);
-  const totalFlex = niceFlex * 2 + greatFlex * 2 + perfectFlex;
+  const gRatio = Math.min(Math.max(greatRatio, pRatio * 1.8), 0.5);
 
-  // Vertical Bauhaus bullseye: Nice / Great / Perfect / Great / Nice
+  // Symmetric Nice / Great / Nice — Perfect is the yellow strike line at center
   const eyeGradient = useMemo(() => {
-    const n1 = niceFlex / totalFlex;
-    const g1 = (niceFlex + greatFlex) / totalFlex;
-    const p1 = (niceFlex + greatFlex + perfectFlex) / totalFlex;
-    const g2 = (niceFlex + greatFlex + perfectFlex + greatFlex) / totalFlex;
-    // Crisp band edges
-    const feather = Math.min(0.008, n1 * 0.08, (greatFlex / totalFlex) * 0.08);
+    const greatTop = 0.5 - gRatio / 2;
+    const feather = Math.min(
+      0.11,
+      Math.max(0.04, (gRatio / 2) * 0.9, greatTop * 0.65),
+    );
+
+    // Top half only — bottom is the exact mirror
+    const topHalf = [
+      0,
+      greatTop - feather,
+      greatTop - feather * 0.55,
+      greatTop - feather * 0.2,
+      greatTop + feather * 0.15,
+      greatTop + feather * 0.45,
+      0.5,
+    ];
+    const topColors = [
+      EYE.nice,
+      EYE.nice,
+      EYE.niceFade,
+      EYE.greatFade,
+      EYE.great,
+      EYE.great,
+      EYE.great,
+    ] as const;
 
     const raw = [
-      0,
-      n1 - feather,
-      n1 + feather,
-      g1 - feather,
-      g1 + feather,
-      p1 - feather,
-      p1 + feather,
-      g2 - feather,
-      g2 + feather,
-      1,
+      ...topHalf,
+      ...topHalf
+        .slice(0, -1)
+        .reverse()
+        .map((v) => 1 - v),
     ];
+    const colors = [...topColors, ...topColors.slice(0, -1).reverse()] as const;
+
     let prev = 0;
     const locations = raw.map((v, i) => {
       if (i === 0) return 0;
@@ -86,24 +101,10 @@ function VerticalMeterComponent({
       const next = Math.max(prev + 0.001, Math.min(0.999, v));
       prev = next;
       return next;
-    });
+    }) as [number, number, ...number[]];
 
-    return {
-      colors: [
-        EYE.nice,
-        EYE.nice,
-        EYE.great,
-        EYE.great,
-        EYE.great,
-        EYE.great,
-        EYE.great,
-        EYE.great,
-        EYE.nice,
-        EYE.nice,
-      ] as const,
-      locations,
-    };
-  }, [niceFlex, greatFlex, perfectFlex, totalFlex]);
+    return { colors, locations };
+  }, [gRatio]);
 
   useEffect(() => {
     wobble.value = withRepeat(
@@ -114,7 +115,8 @@ function VerticalMeterComponent({
   }, [wobble]);
 
   const ticks = useMemo(
-    () => Array.from({ length: TICK_COUNT }, (_, i) => (i + 1) / (TICK_COUNT + 1)),
+    () =>
+      Array.from({ length: TICK_COUNT }, (_, i) => (i + 1) / (TICK_COUNT + 1)),
     [],
   );
 
@@ -136,7 +138,7 @@ function VerticalMeterComponent({
   });
 
   const strikeStyle = useAnimatedStyle(() => ({
-    bottom: zoneTarget.value * innerH - 2,
+    bottom: zoneTarget.value * innerH - 5,
     opacity: 0.95,
   }));
 
@@ -162,24 +164,69 @@ function VerticalMeterComponent({
             backgroundColor: skin.shell,
             padding: 9 * scale,
           },
-        ]}>
+        ]}
+      >
         <View style={styles.shellLip} />
         <View style={[styles.glass, { borderRadius: 18 * scale }]}>
-          {/* Bauhaus bullseye bands */}
+          {/* Glossy toy bullseye */}
           <Animated.View style={[styles.zoneWrap, zoneStyle]}>
             <LinearGradient
-              colors={[...eyeGradient.colors]}
-              locations={[...eyeGradient.locations]}
+              colors={eyeGradient.colors}
+              locations={eyeGradient.locations}
+              style={StyleSheet.absoluteFill}
+            />
+            {/* Rounded plastic depth */}
+            <LinearGradient
+              colors={[
+                "rgba(0,0,0,0.28)",
+                "rgba(0,0,0,0.06)",
+                "rgba(255,255,255,0.14)",
+                "rgba(0,0,0,0.06)",
+                "rgba(0,0,0,0.28)",
+              ]}
+              locations={[0, 0.18, 0.5, 0.82, 1]}
+              style={StyleSheet.absoluteFill}
+              pointerEvents="none"
+            />
+            {/* Specular sheen */}
+            <LinearGradient
+              colors={[
+                "rgba(255,255,255,0.62)",
+                "rgba(255,255,255,0.16)",
+                "rgba(255,255,255,0)",
+              ]}
+              start={{ x: 0, y: 0.5 }}
+              end={{ x: 1, y: 0.5 }}
+              style={styles.zoneSheen}
+              pointerEvents="none"
+            />
+          </Animated.View>
+
+          {/* Perfect = soft yellow center line */}
+          <Animated.View
+            style={[styles.strikeLine, strikeStyle]}
+            pointerEvents="none"
+          >
+            <LinearGradient
+              colors={[
+                "rgba(255,228,74,0)",
+                "rgba(255,228,74,0.55)",
+                EYE.perfect,
+                "rgba(255,228,74,0.55)",
+                "rgba(255,228,74,0)",
+              ]}
+              locations={[0, 0.28, 0.5, 0.72, 1]}
               style={StyleSheet.absoluteFill}
             />
           </Animated.View>
 
-          {/* Perfect = single yellow center line */}
-          <Animated.View style={[styles.strikeLine, strikeStyle]} pointerEvents="none" />
-
           <Animated.View style={[styles.liquidWrap, liquidStyle]}>
             <LinearGradient
-              colors={['rgba(255,176,32,0)', 'rgba(255,176,32,0.55)', 'rgba(255,240,120,0.9)']}
+              colors={[
+                "rgba(255,176,32,0)",
+                "rgba(255,176,32,0.55)",
+                "rgba(255,240,120,0.9)",
+              ]}
               locations={[0, 0.55, 1]}
               style={styles.surfaceGlow}
               pointerEvents="none"
@@ -192,7 +239,11 @@ function VerticalMeterComponent({
             />
 
             <LinearGradient
-              colors={['rgba(255,255,255,0.38)', 'rgba(255,255,255,0.08)', 'rgba(255,255,255,0)']}
+              colors={[
+                "rgba(255,255,255,0.38)",
+                "rgba(255,255,255,0.08)",
+                "rgba(255,255,255,0)",
+              ]}
               start={{ x: 0, y: 0.5 }}
               end={{ x: 1, y: 0.5 }}
               style={styles.liquidSheen}
@@ -201,7 +252,7 @@ function VerticalMeterComponent({
 
             <Animated.View style={[styles.surface, surfaceStyle]}>
               <LinearGradient
-                colors={['#FFFFFF', '#FFF6A0', '#FFC94A']}
+                colors={["#FFFFFF", "#FFF6A0", "#FFC94A"]}
                 start={{ x: 0, y: 0.5 }}
                 end={{ x: 1, y: 0.5 }}
                 style={StyleSheet.absoluteFill}
@@ -246,8 +297,8 @@ export const VerticalMeter = memo(VerticalMeterComponent);
 
 const styles = StyleSheet.create({
   wrap: {
-    alignItems: 'center',
-    justifyContent: 'flex-end',
+    alignItems: "center",
+    justifyContent: "flex-end",
   },
   pipeCap: {
     height: 20,
@@ -259,84 +310,97 @@ const styles = StyleSheet.create({
   shell: {
     borderWidth: 4,
     borderColor: GameColors.ink,
-    overflow: 'hidden',
+    overflow: "hidden",
   },
   shellLip: {
-    position: 'absolute',
+    position: "absolute",
     left: 10,
     top: 16,
     bottom: 16,
     width: 12,
     borderRadius: 999,
-    backgroundColor: 'rgba(255,255,255,0.22)',
+    backgroundColor: "rgba(255,255,255,0.22)",
   },
   glass: {
     flex: 1,
-    overflow: 'hidden',
+    overflow: "hidden",
     backgroundColor: GameColors.meterInner,
     borderWidth: 3,
     borderColor: GameColors.ink,
   },
   zoneWrap: {
-    position: 'absolute',
+    position: "absolute",
     left: 0,
     right: 0,
     zIndex: 1,
-    overflow: 'hidden',
+    overflow: "hidden",
+    borderRadius: 2,
+  },
+  zoneSheen: {
+    position: "absolute",
+    left: 0,
+    top: 0,
+    bottom: 0,
+    width: "48%",
   },
   strikeLine: {
-    position: 'absolute',
+    position: "absolute",
     left: 0,
     right: 0,
-    height: 4,
-    backgroundColor: EYE.perfect,
+    height: 10,
     zIndex: 5,
+    overflow: "hidden",
+    shadowColor: EYE.perfect,
+    shadowOpacity: 0.7,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 0 },
+    elevation: 4,
   },
   liquidWrap: {
-    position: 'absolute',
+    position: "absolute",
     left: 0,
     right: 0,
     bottom: 0,
-    overflow: 'visible',
+    overflow: "visible",
     zIndex: 3,
   },
   fill: {
-    position: 'absolute',
+    position: "absolute",
     left: 0,
     right: 0,
     top: 0,
     bottom: 0,
   },
   liquidSheen: {
-    position: 'absolute',
+    position: "absolute",
     left: 0,
     top: 0,
     bottom: 0,
-    width: '42%',
+    width: "42%",
   },
   surfaceGlow: {
-    position: 'absolute',
+    position: "absolute",
     left: -2,
     right: -2,
     top: -28,
     height: 36,
   },
   surface: {
-    position: 'absolute',
+    position: "absolute",
     left: 0,
     right: 0,
     top: -1,
     height: 5,
     borderRadius: 2,
-    overflow: 'hidden',
-    shadowColor: '#FFB020',
+    overflow: "hidden",
+    shadowColor: "#FFB020",
     shadowOpacity: 0.95,
     shadowRadius: 10,
     shadowOffset: { width: 0, height: 0 },
     elevation: 6,
   },
   ticks: {
-    position: 'absolute',
+    position: "absolute",
     left: 0,
     right: 0,
     top: 0,
@@ -344,20 +408,20 @@ const styles = StyleSheet.create({
     zIndex: 3,
   },
   tick: {
-    position: 'absolute',
+    position: "absolute",
     right: 5,
     marginBottom: -1,
     borderRadius: 1,
-    backgroundColor: 'rgba(255,255,255,0.85)',
+    backgroundColor: "rgba(255,255,255,0.85)",
   },
   glassShine: {
-    position: 'absolute',
+    position: "absolute",
     left: 5,
     top: 10,
     bottom: 10,
     width: 9,
     borderRadius: 999,
-    backgroundColor: 'rgba(255,255,255,0.14)',
+    backgroundColor: "rgba(255,255,255,0.14)",
     zIndex: 4,
   },
   pipeBase: {

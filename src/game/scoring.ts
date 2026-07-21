@@ -78,7 +78,7 @@ export function scoreFill(
     };
   }
 
-  // Nice = blue ring out to the striped markers. Outside markers = miss.
+  // Nice = navy ring out to the rim. Outside rim = miss.
   if (distance <= live.zoneHalf) {
     const t = 1 - (distance - live.greatHalf) / Math.max(0.001, live.zoneHalf - live.greatHalf);
     const basePoints = Math.round((22 + t * 28) * levelBonus);

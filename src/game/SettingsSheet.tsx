@@ -1,6 +1,14 @@
 import Constants from 'expo-constants';
 import { useEffect } from 'react';
-import { Modal, Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import {
+  Alert,
+  Modal,
+  Pressable,
+  StyleSheet,
+  Text,
+  useWindowDimensions,
+  View,
+} from 'react-native';
 import { Gesture, GestureDetector, GestureHandlerRootView } from 'react-native-gesture-handler';
 import Animated, {
   runOnJS,
@@ -17,10 +25,14 @@ type SettingsSheetProps = {
   visible: boolean;
   soundOn: boolean;
   hapticsOn: boolean;
+  /** Show start-over when a run is in progress or finished */
+  canRestart: boolean;
   onClose: () => void;
   onToggleSound: () => void;
   onToggleHaptics: () => void;
+  onRestart: () => void;
   onSendFeedback: () => void;
+  onDeleteData: () => void;
 };
 
 function ToggleRow({
@@ -55,10 +67,12 @@ function ActionRow({
   label,
   subtitle,
   onPress,
+  destructive,
 }: {
   label: string;
   subtitle: string;
   onPress: () => void;
+  destructive?: boolean;
 }) {
   return (
     <Pressable
@@ -66,10 +80,10 @@ function ActionRow({
       style={({ pressed }) => [styles.row, pressed && styles.rowPressed]}
       accessibilityRole="button">
       <View style={styles.rowText}>
-        <Text style={styles.rowLabel}>{label}</Text>
+        <Text style={[styles.rowLabel, destructive && styles.rowLabelDanger]}>{label}</Text>
         <Text style={styles.rowSub}>{subtitle}</Text>
       </View>
-      <Text style={styles.chevron}>›</Text>
+      <Text style={[styles.chevron, destructive && styles.rowLabelDanger]}>›</Text>
     </Pressable>
   );
 }
@@ -78,10 +92,13 @@ export function SettingsSheet({
   visible,
   soundOn,
   hapticsOn,
+  canRestart,
   onClose,
   onToggleSound,
   onToggleHaptics,
+  onRestart,
   onSendFeedback,
+  onDeleteData,
 }: SettingsSheetProps) {
   const insets = useSafeAreaInsets();
   const { height: windowH } = useWindowDimensions();
@@ -102,6 +119,21 @@ export function SettingsSheet({
     translateY.value = withTiming(sheetH, { duration: 220 }, (finished) => {
       if (finished) runOnJS(onClose)();
     });
+  };
+
+  const confirmDeleteData = () => {
+    Alert.alert(
+      'Delete all data?',
+      'This clears high score, best level, coins, and unlocks. This cannot be undone.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: onDeleteData,
+        },
+      ],
+    );
   };
 
   const pan = Gesture.Pan()
@@ -178,11 +210,31 @@ export function SettingsSheet({
                 />
               </View>
 
+              {canRestart ? (
+                <Pressable
+                  onPress={onRestart}
+                  style={({ pressed }) => [
+                    styles.startOverBtn,
+                    pressed && styles.closeBtnPressed,
+                  ]}
+                  accessibilityRole="button"
+                  accessibilityLabel="Start over">
+                  <Text style={styles.startOverBtnText}>START OVER</Text>
+                </Pressable>
+              ) : null}
+
               <View style={styles.card}>
                 <ActionRow
                   label="Send feedback"
                   subtitle="Ideas, bugs, or love notes"
                   onPress={onSendFeedback}
+                />
+                <View style={styles.divider} />
+                <ActionRow
+                  label="Delete data"
+                  subtitle="High score, progress & unlocks"
+                  onPress={confirmDeleteData}
+                  destructive
                 />
               </View>
             </View>
@@ -254,6 +306,21 @@ const styles = StyleSheet.create({
     fontSize: 15,
     color: GameColors.white,
   },
+  startOverBtn: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    borderRadius: 14,
+    backgroundColor: GameColors.playBlue,
+    borderWidth: 2.5,
+    borderColor: GameColors.ink,
+  },
+  startOverBtnText: {
+    fontFamily: GameFonts.body,
+    fontSize: 18,
+    color: GameColors.white,
+  },
   body: {
     flex: 1,
     gap: 16,
@@ -284,6 +351,9 @@ const styles = StyleSheet.create({
     fontSize: 20,
     lineHeight: 24,
     color: GameColors.ink,
+  },
+  rowLabelDanger: {
+    color: GameColors.scoreBad,
   },
   rowSub: {
     fontFamily: GameFonts.soft,

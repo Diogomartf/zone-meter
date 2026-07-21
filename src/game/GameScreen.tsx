@@ -1,6 +1,6 @@
-import { Image } from 'expo-image';
-import { SymbolView } from 'expo-symbols';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { Image } from "expo-image";
+import { SymbolView } from "expo-symbols";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   Alert,
   Linking,
@@ -9,7 +9,7 @@ import {
   Text,
   useWindowDimensions,
   View,
-} from 'react-native';
+} from "react-native";
 import Animated, {
   cancelAnimation,
   Easing,
@@ -20,45 +20,46 @@ import Animated, {
   withDelay,
   withSequence,
   withTiming,
-} from 'react-native-reanimated';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+} from "react-native-reanimated";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { GameColors, GameFonts } from '@/constants/gameTheme';
-import { CountdownBurst } from '@/game/CountdownBurst';
-import { Hearts } from '@/game/Hearts';
-import { MissBreak } from '@/game/MissBreak';
-import { PerfectSwoosh } from '@/game/PerfectSwoosh';
-import { gameHaptics, setGameHapticsEnabled } from '@/game/haptics';
-import { createRng, makeRound } from '@/game/levels';
+import { GameColors, GameFonts } from "@/constants/gameTheme";
+import { CountdownBurst } from "@/game/CountdownBurst";
+import { Hearts } from "@/game/Hearts";
+import { MissBreak } from "@/game/MissBreak";
+import { PerfectSwoosh } from "@/game/PerfectSwoosh";
+import { gameHaptics, setGameHapticsEnabled } from "@/game/haptics";
+import { createRng, makeRound } from "@/game/levels";
 import {
   comboMultiplier,
   milestoneClearBonus,
   scoreFill,
   STARTING_LIVES,
-} from '@/game/scoring';
-import { SettingsSheet } from '@/game/SettingsSheet';
-import { DEFAULT_SKIN, SKINS } from '@/game/skins';
+} from "@/game/scoring";
+import { SettingsSheet } from "@/game/SettingsSheet";
+import { DEFAULT_SKIN, SKINS } from "@/game/skins";
 import {
+  clearPersist,
   commitRunResult,
   dailySeed,
   loadPersist,
   setHapticsEnabled,
   setSoundMuted,
   todayKey,
-} from '@/game/storage';
+} from "@/game/storage";
 import type {
   PersistState,
   RoundConfig,
   RoundLabel,
   RoundOutcome,
   SessionStats,
-} from '@/game/types';
-import { useSounds } from '@/game/useSounds';
-import { VerticalMeter } from '@/game/VerticalMeter';
+} from "@/game/types";
+import { useSounds } from "@/game/useSounds";
+import { VerticalMeter } from "@/game/VerticalMeter";
 
-const LOGO = require('../../assets/images/zone-meter-logo.png');
-const GAME_BG = require('../../assets/images/game-bg.png');
-const FEEDBACK_EMAIL = 'hello@zonemeter.com';
+const LOGO = require("../../assets/images/zone-meter-logo.png");
+const GAME_BG = require("../../assets/images/game-bg.png");
+const FEEDBACK_EMAIL = "hello@zonemeter.com";
 
 /** Yellow pad surface in game-bg.png (fraction of image height from top). */
 const PAD_SURFACE_Y = 0.905;
@@ -67,16 +68,16 @@ const METER_WRAP_EXTRA = 28;
 /** Brief freeze after the meter lands so short zones can be read before fill. */
 const LEVEL_READ_PAUSE_MS = 139;
 
-type Phase = 'ready' | 'countdown' | 'filling' | 'result' | 'gameover';
+type Phase = "ready" | "countdown" | "filling" | "result" | "gameover";
 
 type PauseResume =
-  | { kind: 'fill'; fillAt: number }
-  | { kind: 'countdown'; countAt: number }
-  | { kind: 'startFill' }
-  | { kind: 'advance' };
+  | { kind: "fill"; fillAt: number }
+  | { kind: "countdown"; countAt: number }
+  | { kind: "startFill" }
+  | { kind: "advance" };
 
 /** Callouts sit beside / near the meter top — never dead-center above it */
-type FeedbackSlot = 'left' | 'right' | 'topLeft' | 'topRight';
+type FeedbackSlot = "left" | "right" | "topLeft" | "topRight";
 
 type Feedback = {
   label: RoundLabel;
@@ -87,7 +88,7 @@ type Feedback = {
   slot: FeedbackSlot;
 };
 
-const FEEDBACK_SLOTS: FeedbackSlot[] = ['left', 'right', 'topLeft', 'topRight'];
+const FEEDBACK_SLOTS: FeedbackSlot[] = ["left", "right", "topLeft", "topRight"];
 
 function nextFeedbackSlot(prev: FeedbackSlot | null): FeedbackSlot {
   const pool = prev ? FEEDBACK_SLOTS.filter((s) => s !== prev) : FEEDBACK_SLOTS;
@@ -96,12 +97,17 @@ function nextFeedbackSlot(prev: FeedbackSlot | null): FeedbackSlot {
 
 const FEEDBACK_SLOT_STYLE: Record<
   FeedbackSlot,
-  { top: `${number}%`; left?: number; right?: number; alignItems: 'flex-start' | 'flex-end' }
+  {
+    top: `${number}%`;
+    left?: number;
+    right?: number;
+    alignItems: "flex-start" | "flex-end";
+  }
 > = {
-  left: { top: '44%', left: 10, alignItems: 'flex-start' },
-  right: { top: '44%', right: 10, alignItems: 'flex-end' },
-  topLeft: { top: '30%', left: 10, alignItems: 'flex-start' },
-  topRight: { top: '30%', right: 10, alignItems: 'flex-end' },
+  left: { top: "44%", left: 10, alignItems: "flex-start" },
+  right: { top: "44%", right: 10, alignItems: "flex-end" },
+  topLeft: { top: "30%", left: 10, alignItems: "flex-start" },
+  topRight: { top: "30%", right: 10, alignItems: "flex-end" },
 };
 
 const emptyStats = (): SessionStats => ({
@@ -114,12 +120,12 @@ const emptyStats = (): SessionStats => ({
 });
 
 const LABEL_COLORS: Record<RoundLabel, string> = {
-  Perfect: '#FFE14A',
-  Great: '#E24B2D',
-  Good: '#58CC02',
-  Nice: '#1B3A8C',
-  Close: '#FFC800',
-  Miss: '#6B7280',
+  Perfect: "#FFE14A",
+  Great: "#E24B2D",
+  Good: "#58CC02",
+  Nice: "#1B3A8C",
+  Close: "#FFC800",
+  Miss: "#6B7280",
 };
 
 type GameCtaProps = {
@@ -135,7 +141,11 @@ function GameCta({ label, subtitle, face, depth, onPress }: GameCtaProps) {
   return (
     <Pressable
       onPress={onPress}
-      style={({ pressed }) => [styles.ctaPressable, pressed && styles.ctaPressableDown]}>
+      style={({ pressed }) => [
+        styles.ctaPressable,
+        pressed && styles.ctaPressableDown,
+      ]}
+    >
       {({ pressed }) => (
         <View style={[styles.ctaShell, { backgroundColor: depth }]}>
           <View
@@ -143,7 +153,8 @@ function GameCta({ label, subtitle, face, depth, onPress }: GameCtaProps) {
               styles.ctaFace,
               { backgroundColor: face },
               pressed ? styles.ctaFaceDown : styles.ctaFaceUp,
-            ]}>
+            ]}
+          >
             <View style={styles.ctaShine} />
             <Text style={styles.ctaText}>{label}</Text>
             {subtitle ? <Text style={styles.ctaSub}>{subtitle}</Text> : null}
@@ -161,7 +172,7 @@ export function GameScreen() {
   const muted = Boolean(persist?.soundMuted);
   const { play } = useSounds(muted);
 
-  const [phase, setPhase] = useState<Phase>('ready');
+  const [phase, setPhase] = useState<Phase>("ready");
   const [round, setRound] = useState<RoundConfig>(() => makeRound(1));
   const [score, setScore] = useState(0);
   const [lives, setLives] = useState(STARTING_LIVES);
@@ -180,6 +191,13 @@ export function GameScreen() {
   const fill = useSharedValue(0);
   const zoneTarget = useSharedValue(round.target);
   const zoneHalf = useSharedValue(round.zoneHalf);
+  // Zone motion params — driven from fill so visuals match scoreFill/zoneAt
+  const zoneFrom = useSharedValue(round.target);
+  const zoneTo = useSharedValue(round.target);
+  const zoneMoves = useSharedValue(0);
+  const halfFrom = useSharedValue(round.zoneHalf);
+  const halfTo = useSharedValue(round.zoneHalf);
+  const zoneShrinks = useSharedValue(0);
   const meterX = useSharedValue(0);
   const feedbackOpacity = useSharedValue(0);
   const feedbackScale = useSharedValue(0.7);
@@ -187,7 +205,31 @@ export function GameScreen() {
   const comboLabelOpacity = useSharedValue(0);
   const isFilling = useSharedValue(0);
 
-  const phaseRef = useRef<Phase>('ready');
+  const syncZoneMotion = useCallback(
+    (config: RoundConfig) => {
+      zoneFrom.value = config.target;
+      zoneTo.value = config.targetEnd ?? config.target;
+      zoneMoves.value = config.moving && config.targetEnd != null ? 1 : 0;
+      halfFrom.value = config.zoneHalf;
+      halfTo.value = config.zoneHalfEnd ?? config.zoneHalf;
+      zoneShrinks.value =
+        config.shrinking && config.zoneHalfEnd != null ? 1 : 0;
+      zoneTarget.value = config.target;
+      zoneHalf.value = config.zoneHalf;
+    },
+    [
+      halfFrom,
+      halfTo,
+      zoneFrom,
+      zoneHalf,
+      zoneMoves,
+      zoneShrinks,
+      zoneTarget,
+      zoneTo,
+    ],
+  );
+
+  const phaseRef = useRef<Phase>("ready");
   const roundRef = useRef(round);
   const scoreRef = useRef(0);
   const livesRef = useRef(STARTING_LIVES);
@@ -202,7 +244,9 @@ export function GameScreen() {
   /** True while settings sheet is open — game must not progress. */
   const settingsPausedRef = useRef(false);
   const countdownRef = useRef(3);
-  const pendingTimerRef = useRef<'countdown' | 'startFill' | 'advance' | null>(null);
+  const pendingTimerRef = useRef<"countdown" | "startFill" | "advance" | null>(
+    null,
+  );
   const pauseResumeRef = useRef<PauseResume | null>(null);
   const startFillRef = useRef<() => void>(() => {});
   const runCountdownFromRef = useRef<(at: number) => void>(() => {});
@@ -214,9 +258,32 @@ export function GameScreen() {
   }, [phase]);
   useEffect(() => {
     roundRef.current = round;
-    zoneTarget.value = round.target;
-    zoneHalf.value = round.zoneHalf;
-  }, [round, zoneHalf, zoneTarget]);
+    syncZoneMotion(round);
+  }, [round, syncZoneMotion]);
+
+  // Keep the painted zone locked to fill progress (same lerp as zoneAt / scoreFill)
+  useAnimatedReaction(
+    () => fill.value,
+    (t) => {
+      zoneTarget.value = zoneMoves.value
+        ? zoneFrom.value + (zoneTo.value - zoneFrom.value) * t
+        : zoneFrom.value;
+      zoneHalf.value = zoneShrinks.value
+        ? halfFrom.value + (halfTo.value - halfFrom.value) * t
+        : halfFrom.value;
+    },
+    [
+      fill,
+      halfFrom,
+      halfTo,
+      zoneFrom,
+      zoneHalf,
+      zoneMoves,
+      zoneShrinks,
+      zoneTarget,
+      zoneTo,
+    ],
+  );
   useEffect(() => {
     scoreRef.current = score;
   }, [score]);
@@ -242,9 +309,9 @@ export function GameScreen() {
     };
   }, []);
 
-  const showFeedback = (next: Omit<Feedback, 'slot'>) => {
-    const isPerfect = next.label === 'Perfect';
-    const isMiss = next.label === 'Miss';
+  const showFeedback = (next: Omit<Feedback, "slot">) => {
+    const isPerfect = next.label === "Perfect";
+    const isMiss = next.label === "Miss";
     const slot = nextFeedbackSlot(feedbackSlotRef.current);
     feedbackSlotRef.current = slot;
     setFeedback({ ...next, slot });
@@ -259,7 +326,10 @@ export function GameScreen() {
       comboLabelOpacity.value = 0;
       comboLabelOpacity.value = withSequence(
         withTiming(1, { duration: 90 }),
-        withDelay(650, withTiming(0, { duration: 320, easing: Easing.in(Easing.quad) })),
+        withDelay(
+          650,
+          withTiming(0, { duration: 320, easing: Easing.in(Easing.quad) }),
+        ),
       );
       comboIntroShownRef.current = true;
     };
@@ -313,8 +383,8 @@ export function GameScreen() {
       });
       setPersist(next);
       setIsNewBest(finalScore > 0 && finalScore >= next.highScore);
-      setPhase('gameover');
-      phaseRef.current = 'gameover';
+      setPhase("gameover");
+      phaseRef.current = "gameover";
     },
     [dailyMode],
   );
@@ -328,7 +398,7 @@ export function GameScreen() {
       setCombo(result.combo);
       comboRef.current = result.combo;
       isFilling.value = 0;
-      void gameHaptics.result(result.label === 'Close' ? 'Nice' : result.label);
+      void gameHaptics.result(result.label === "Close" ? "Nice" : result.label);
 
       showFeedback({
         label: result.label,
@@ -342,30 +412,30 @@ export function GameScreen() {
         const next: SessionStats = {
           ...s,
           attempts: s.attempts + 1,
-          hits: result.result === 'miss' ? s.hits : s.hits + 1,
-          perfects: result.result === 'perfect' ? s.perfects + 1 : s.perfects,
+          hits: result.result === "miss" ? s.hits : s.hits + 1,
+          perfects: result.result === "perfect" ? s.perfects + 1 : s.perfects,
           misses: result.costsLife ? s.misses + 1 : s.misses,
           bestCombo: Math.max(s.bestCombo, result.combo),
           coinsEarned: s.coinsEarned + result.coins,
         };
 
         if (result.costsLife) {
-          play('miss');
+          play("miss");
           const livesLeft = livesRef.current - 1;
           setLives(livesLeft);
           livesRef.current = livesLeft;
-          setPhase('result');
-          phaseRef.current = 'result';
+          setPhase("result");
+          phaseRef.current = "result";
           if (livesLeft <= 0) {
             void endRun(scoreRef.current, next);
           } else {
-            // Continue run — next meter, no retry UI
+            // Continue run — next meter
             if (autoTimer.current) clearTimeout(autoTimer.current);
-            pendingTimerRef.current = 'advance';
+            pendingTimerRef.current = "advance";
             autoTimer.current = setTimeout(() => {
               pendingTimerRef.current = null;
               if (settingsPausedRef.current) {
-                pauseResumeRef.current = { kind: 'advance' };
+                pauseResumeRef.current = { kind: "advance" };
                 return;
               }
               advanceRef.current();
@@ -374,22 +444,25 @@ export function GameScreen() {
           return next;
         }
 
-        play(result.result === 'perfect' ? 'perfect' : 'zone');
+        play(result.result === "perfect" ? "perfect" : "zone");
         setScore((sc) => sc + result.points);
         scoreRef.current += result.points;
-        setPhase('result');
-        phaseRef.current = 'result';
+        setPhase("result");
+        phaseRef.current = "result";
 
         if (autoTimer.current) clearTimeout(autoTimer.current);
-        pendingTimerRef.current = 'advance';
-        autoTimer.current = setTimeout(() => {
-          pendingTimerRef.current = null;
-          if (settingsPausedRef.current) {
-            pauseResumeRef.current = { kind: 'advance' };
-            return;
-          }
-          advanceRef.current();
-        }, result.result === 'perfect' ? 900 : 480);
+        pendingTimerRef.current = "advance";
+        autoTimer.current = setTimeout(
+          () => {
+            pendingTimerRef.current = null;
+            if (settingsPausedRef.current) {
+              pauseResumeRef.current = { kind: "advance" };
+              return;
+            }
+            advanceRef.current();
+          },
+          result.result === "perfect" ? 900 : 480,
+        );
         return next;
       });
     },
@@ -398,35 +471,22 @@ export function GameScreen() {
 
   const startFill = useCallback(() => {
     if (settingsPausedRef.current) {
-      pauseResumeRef.current = { kind: 'startFill' };
+      pauseResumeRef.current = { kind: "startFill" };
       return;
     }
     const current = roundRef.current;
     setOutcome(null);
     setFeedback(null);
     feedbackOpacity.value = 0;
-    setPhase('filling');
-    phaseRef.current = 'filling';
+    setPhase("filling");
+    phaseRef.current = "filling";
     isFilling.value = 1;
-    zoneTarget.value = current.target;
-    zoneHalf.value = current.zoneHalf;
+    syncZoneMotion(current);
     fill.value = 0;
-    play('start');
+    play("start");
     void gameHaptics.start();
 
-    if (current.moving && current.targetEnd != null) {
-      zoneTarget.value = withTiming(current.targetEnd, {
-        duration: current.fillMs,
-        easing: Easing.inOut(Easing.sin),
-      });
-    }
-    if (current.shrinking && current.zoneHalfEnd != null) {
-      zoneHalf.value = withTiming(current.zoneHalfEnd, {
-        duration: current.fillMs,
-        easing: Easing.linear,
-      });
-    }
-
+    // Zone position/size follow fill via useAnimatedReaction (matches scoreFill)
     fill.value = withTiming(
       1,
       { duration: current.fillMs, easing: Easing.bezier(0.2, 0.05, 0.35, 1) },
@@ -434,7 +494,7 @@ export function GameScreen() {
         if (finished) runOnJS(finishRound)(1);
       },
     );
-  }, [fill, finishRound, isFilling, play, zoneHalf, zoneTarget]);
+  }, [fill, finishRound, isFilling, play, syncZoneMotion]);
 
   useEffect(() => {
     startFillRef.current = startFill;
@@ -445,11 +505,11 @@ export function GameScreen() {
       if (countTimer.current) clearTimeout(countTimer.current);
 
       if (current <= 0) {
-        pendingTimerRef.current = 'startFill';
+        pendingTimerRef.current = "startFill";
         countTimer.current = setTimeout(() => {
           pendingTimerRef.current = null;
           if (settingsPausedRef.current) {
-            pauseResumeRef.current = { kind: 'startFill' };
+            pauseResumeRef.current = { kind: "startFill" };
             return;
           }
           startFillRef.current();
@@ -457,22 +517,22 @@ export function GameScreen() {
         return;
       }
 
-      pendingTimerRef.current = 'countdown';
+      pendingTimerRef.current = "countdown";
       countTimer.current = setTimeout(() => {
         pendingTimerRef.current = null;
         if (settingsPausedRef.current) {
-          pauseResumeRef.current = { kind: 'countdown', countAt: current };
+          pauseResumeRef.current = { kind: "countdown", countAt: current };
           return;
         }
         const next = current - 1;
         setCountdown(next);
         countdownRef.current = next;
         if (next > 0) {
-          play('tick');
+          play("tick");
           void gameHaptics.countdownTick(next);
           runCountdownFromRef.current(next);
         } else {
-          play('start');
+          play("start");
           void gameHaptics.countdownTick(0);
           runCountdownFromRef.current(0);
         }
@@ -490,18 +550,17 @@ export function GameScreen() {
       setRound(next);
       roundRef.current = next;
       fill.value = 0;
-      zoneTarget.value = next.target;
-      zoneHalf.value = next.zoneHalf;
+      syncZoneMotion(next);
       setOutcome(null);
 
       // Only countdown on the very first meter of a run
       if (next.level === 1) {
         meterX.value = 0;
-        setPhase('countdown');
-        phaseRef.current = 'countdown';
+        setPhase("countdown");
+        phaseRef.current = "countdown";
         setCountdown(3);
         countdownRef.current = 3;
-        play('tick');
+        play("tick");
         void gameHaptics.countdownTick(3);
         runCountdownFromRef.current(3);
         return;
@@ -510,15 +569,15 @@ export function GameScreen() {
       // Later levels: land the meter, pause so the zone is readable, then fill
       const startAfterReadPause = () => {
         if (settingsPausedRef.current) {
-          pauseResumeRef.current = { kind: 'startFill' };
+          pauseResumeRef.current = { kind: "startFill" };
           return;
         }
         if (countTimer.current) clearTimeout(countTimer.current);
-        pendingTimerRef.current = 'startFill';
+        pendingTimerRef.current = "startFill";
         countTimer.current = setTimeout(() => {
           pendingTimerRef.current = null;
           if (settingsPausedRef.current) {
-            pauseResumeRef.current = { kind: 'startFill' };
+            pauseResumeRef.current = { kind: "startFill" };
             return;
           }
           startFillRef.current();
@@ -539,7 +598,7 @@ export function GameScreen() {
         startAfterReadPause();
       }
     },
-    [fill, meterX, play, zoneHalf, zoneTarget],
+    [fill, meterX, play, syncZoneMotion],
   );
 
   const spawnNextLevel = useCallback(() => {
@@ -552,7 +611,7 @@ export function GameScreen() {
 
   const onMeterSlidOut = useCallback(() => {
     if (settingsPausedRef.current) {
-      pauseResumeRef.current = { kind: 'advance' };
+      pauseResumeRef.current = { kind: "advance" };
       return;
     }
     spawnNextLevel();
@@ -562,9 +621,13 @@ export function GameScreen() {
     if (autoTimer.current) clearTimeout(autoTimer.current);
     pendingTimerRef.current = null;
     // Slide current meter out, then bring next in
-    meterX.value = withTiming(-360, { duration: 220, easing: Easing.in(Easing.cubic) }, (done) => {
-      if (done) runOnJS(onMeterSlidOut)();
-    });
+    meterX.value = withTiming(
+      -360,
+      { duration: 220, easing: Easing.in(Easing.cubic) },
+      (done) => {
+        if (done) runOnJS(onMeterSlidOut)();
+      },
+    );
   }, [meterX, onMeterSlidOut]);
 
   useEffect(() => {
@@ -594,8 +657,6 @@ export function GameScreen() {
     setSettingsOpen(false);
     cancelAnimation(meterX);
     cancelAnimation(fill);
-    cancelAnimation(zoneTarget);
-    cancelAnimation(zoneHalf);
     setDailyMode(daily);
     rngRef.current = daily ? createRng(dailySeed()) : Math.random;
     setScore(0);
@@ -618,8 +679,8 @@ export function GameScreen() {
     (from: number) => {
       const current = roundRef.current;
       const remaining = Math.max(90, Math.round(current.fillMs * (1 - from)));
-      setPhase('filling');
-      phaseRef.current = 'filling';
+      setPhase("filling");
+      phaseRef.current = "filling";
       isFilling.value = 1;
       fill.value = from;
       fill.value = withTiming(
@@ -638,23 +699,27 @@ export function GameScreen() {
     settingsPausedRef.current = true;
 
     const p = phaseRef.current;
-    if (p === 'filling') {
+    if (p === "filling") {
       const at = fill.value;
       cancelAnimation(fill);
-      cancelAnimation(zoneTarget);
-      cancelAnimation(zoneHalf);
       fill.value = at;
       isFilling.value = 0;
-      pauseResumeRef.current = { kind: 'fill', fillAt: at };
-    } else if (p === 'countdown') {
-      pauseResumeRef.current = { kind: 'countdown', countAt: countdownRef.current };
-    } else if (pendingTimerRef.current === 'startFill') {
-      pauseResumeRef.current = { kind: 'startFill' };
-    } else if (pendingTimerRef.current === 'advance' || p === 'result') {
+      pauseResumeRef.current = { kind: "fill", fillAt: at };
+    } else if (p === "countdown") {
+      pauseResumeRef.current = {
+        kind: "countdown",
+        countAt: countdownRef.current,
+      };
+    } else if (pendingTimerRef.current === "startFill") {
+      pauseResumeRef.current = { kind: "startFill" };
+    } else if (pendingTimerRef.current === "advance" || p === "result") {
       // Result auto-advance, or mid level-transition
-      if (pendingTimerRef.current === 'advance' || pauseResumeRef.current == null) {
-        if (livesRef.current > 0 && p === 'result') {
-          pauseResumeRef.current = { kind: 'advance' };
+      if (
+        pendingTimerRef.current === "advance" ||
+        pauseResumeRef.current == null
+      ) {
+        if (livesRef.current > 0 && p === "result") {
+          pauseResumeRef.current = { kind: "advance" };
         }
       }
     }
@@ -671,15 +736,15 @@ export function GameScreen() {
 
     // Freeze any in-flight meter slide
     cancelAnimation(meterX);
-    if (pauseResumeRef.current?.kind === 'startFill') {
+    if (pauseResumeRef.current?.kind === "startFill") {
       meterX.value = 0;
-    } else if (pauseResumeRef.current?.kind === 'advance') {
+    } else if (pauseResumeRef.current?.kind === "advance") {
       // Keep meter put until resume spawns the next level
       meterX.value = meterX.value;
     }
 
     setSettingsOpen(true);
-  }, [fill, isFilling, meterX, zoneHalf, zoneTarget]);
+  }, [fill, isFilling, meterX]);
 
   const closeSettings = useCallback(() => {
     setSettingsOpen(false);
@@ -688,20 +753,20 @@ export function GameScreen() {
     pauseResumeRef.current = null;
     if (!resume) return;
 
-    if (resume.kind === 'fill') {
+    if (resume.kind === "fill") {
       resumeFillFrom(resume.fillAt);
       return;
     }
-    if (resume.kind === 'countdown') {
+    if (resume.kind === "countdown") {
       runCountdownFromRef.current(resume.countAt);
       return;
     }
-    if (resume.kind === 'startFill') {
+    if (resume.kind === "startFill") {
       meterX.value = 0;
       startFillRef.current();
       return;
     }
-    if (resume.kind === 'advance') {
+    if (resume.kind === "advance") {
       autoTimer.current = setTimeout(() => advanceRef.current(), 200);
     }
   }, [meterX, resumeFillFrom]);
@@ -720,37 +785,88 @@ export function GameScreen() {
     if (enabled) void gameHaptics.next();
   };
 
+  const restartFromSettings = () => {
+    void gameHaptics.next();
+    startRun(dailyMode);
+  };
+
   const sendFeedback = async () => {
     void gameHaptics.next();
-    const subject = encodeURIComponent('Zone Meter feedback');
+    const subject = encodeURIComponent("Zone Meter feedback");
     const url = `mailto:${FEEDBACK_EMAIL}?subject=${subject}`;
     try {
       const can = await Linking.canOpenURL(url);
       if (!can) {
-        Alert.alert('Feedback', `Email us at ${FEEDBACK_EMAIL}`);
+        Alert.alert("Feedback", `Email us at ${FEEDBACK_EMAIL}`);
         return;
       }
       await Linking.openURL(url);
     } catch {
-      Alert.alert('Feedback', `Email us at ${FEEDBACK_EMAIL}`);
+      Alert.alert("Feedback", `Email us at ${FEEDBACK_EMAIL}`);
     }
+  };
+
+  const deleteData = async () => {
+    void gameHaptics.next();
+    const next = await clearPersist();
+    setPersist(next);
+    setGameHapticsEnabled(next.hapticsEnabled !== false);
+
+    if (countTimer.current) clearTimeout(countTimer.current);
+    if (autoTimer.current) clearTimeout(autoTimer.current);
+    settingsPausedRef.current = false;
+    pauseResumeRef.current = null;
+    pendingTimerRef.current = null;
+    setSettingsOpen(false);
+    cancelAnimation(meterX);
+    cancelAnimation(fill);
+    isFilling.value = 0;
+    fill.value = 0;
+    setDailyMode(false);
+    rngRef.current = Math.random;
+    setScore(0);
+    scoreRef.current = 0;
+    setLives(STARTING_LIVES);
+    livesRef.current = STARTING_LIVES;
+    setCombo(0);
+    comboRef.current = 0;
+    comboIntroShownRef.current = false;
+    comboLabelOpacity.value = 0;
+    setStats(emptyStats());
+    setIsNewBest(false);
+    setFeedback(null);
+    feedbackOpacity.value = 0;
+    setOutcome(null);
+    const idle = makeRound(1);
+    setRound(idle);
+    roundRef.current = idle;
+    syncZoneMotion(idle);
+    setPhase("ready");
+    phaseRef.current = "ready";
   };
 
   const onTap = () => {
     if (settingsOpen || lockingTap.current) return;
     const p = phaseRef.current;
-    if (p === 'countdown' || p === 'ready' || p === 'result') return;
+    if (p === "countdown" || p === "ready" || p === "result") return;
 
-    if (p === 'filling') {
+    if (p === "filling") {
       lockingTap.current = true;
-      // Freeze fill exactly where it is — no cancel jump / meter flick
+      // Freeze fill exactly where it is — zone is derived from fill, so it matches
       const stoppedAt = fill.value;
       cancelAnimation(fill);
-      cancelAnimation(zoneTarget);
-      cancelAnimation(zoneHalf);
       fill.value = stoppedAt;
+      // Snap zone to the scored position (same as zoneAt)
+      if (zoneMoves.value) {
+        zoneTarget.value =
+          zoneFrom.value + (zoneTo.value - zoneFrom.value) * stoppedAt;
+      }
+      if (zoneShrinks.value) {
+        zoneHalf.value =
+          halfFrom.value + (halfTo.value - halfFrom.value) * stoppedAt;
+      }
       isFilling.value = 0;
-      play('tap');
+      play("tap");
       void gameHaptics.stop();
       finishRound(stoppedAt);
       requestAnimationFrame(() => {
@@ -773,17 +889,20 @@ export function GameScreen() {
     opacity: comboLabelOpacity.value,
     height: comboLabelOpacity.value * 18,
     marginBottom: comboLabelOpacity.value * 2,
-    overflow: 'hidden' as const,
+    overflow: "hidden" as const,
   }));
 
   const accuracy =
     stats.attempts > 0 ? Math.round((stats.hits / stats.attempts) * 100) : 0;
 
-  const hitEnabled = phase === 'filling' && !settingsOpen;
+  const hitEnabled = phase === "filling" && !settingsOpen;
   const meterScale = round.meterScale;
   const meterWrapH = METER_BASE_H * meterScale + METER_WRAP_EXTRA;
   // Pin meter base to the yellow pad in the background art
-  const meterBottom = Math.max(insets.bottom + 4, windowH * (1 - PAD_SURFACE_Y));
+  const meterBottom = Math.max(
+    insets.bottom + 4,
+    windowH * (1 - PAD_SURFACE_Y),
+  );
   const menuBottom = meterBottom + meterWrapH * 0.42;
   return (
     <View style={styles.root}>
@@ -806,16 +925,21 @@ export function GameScreen() {
             bottom: meterBottom,
             height: meterWrapH,
           },
-          phase === 'gameover' && styles.meterDimmed,
+          phase === "gameover" && styles.meterDimmed,
         ]}
-        pointerEvents="none">
+        pointerEvents="none"
+      >
         <Animated.View style={meterStyle}>
           <VerticalMeter
             fill={fill}
             zoneTarget={zoneTarget}
             zoneHalf={zoneHalf}
-            perfectRatio={round.zoneHalf > 0 ? round.perfectHalf / round.zoneHalf : 0.18}
-            greatRatio={round.zoneHalf > 0 ? round.greatHalf / round.zoneHalf : 0.48}
+            perfectRatio={
+              round.zoneHalf > 0 ? round.perfectHalf / round.zoneHalf : 0.18
+            }
+            greatRatio={
+              round.zoneHalf > 0 ? round.greatHalf / round.zoneHalf : 0.48
+            }
             skin={skin}
             scale={meterScale}
           />
@@ -825,15 +949,22 @@ export function GameScreen() {
       <View
         style={[styles.content, { paddingTop: insets.top + 8 }]}
         pointerEvents="box-none"
-        collapsable={false}>
+        collapsable={false}
+      >
         <View style={styles.topBlock} pointerEvents="box-none">
           <View style={styles.topRow} pointerEvents="box-none">
             <View style={styles.topLeft} pointerEvents="none">
-              <Image source={LOGO} style={styles.logoHud} contentFit="contain" />
+              <Image
+                source={LOGO}
+                style={styles.logoHud}
+                contentFit="contain"
+              />
             </View>
 
             <View style={styles.bestPill} pointerEvents="none">
-              <Text style={styles.bestLabel}>{dailyMode ? 'DAILY' : 'BEST'}</Text>
+              <Text style={styles.bestLabel}>
+                {dailyMode ? "DAILY" : "BEST"}
+              </Text>
               <Text style={styles.bestValue}>
                 {dailyMode
                   ? persist?.dailyBest.date === todayKey()
@@ -842,21 +973,23 @@ export function GameScreen() {
                   : (persist?.highScore ?? 0)}
               </Text>
               {!dailyMode ? (
-                <Text style={styles.bestSub}>LVL {persist?.bestLevel ?? 0}</Text>
+                <Text style={styles.bestSub}>
+                  LVL {persist?.bestLevel ?? 0}
+                </Text>
               ) : null}
             </View>
           </View>
         </View>
 
-        {phase !== 'ready' ? (
+        {phase !== "ready" ? (
           <View style={styles.statsBlock} pointerEvents="none">
-            {phase !== 'gameover' ? (
+            {phase !== "gameover" ? (
               <View style={styles.heartsAboveScore}>
                 <Hearts lives={lives} max={STARTING_LIVES} />
               </View>
             ) : null}
             <Text style={styles.bigScore}>{score}</Text>
-            {phase === 'gameover' ? (
+            {phase === "gameover" ? (
               <View style={styles.runStats}>
                 <View style={styles.runStat}>
                   <Text style={styles.runStatLabel}>ACC</Text>
@@ -879,14 +1012,15 @@ export function GameScreen() {
           </View>
         ) : null}
 
-        {phase !== 'ready' && phase !== 'gameover' && combo > 1 ? (
+        {phase !== "ready" && phase !== "gameover" && combo > 1 ? (
           <Animated.View
             style={[
               styles.comboFloat,
               { bottom: Math.max(insets.bottom + 6, meterBottom - 64) },
               comboBadgeStyle,
             ]}
-            pointerEvents="none">
+            pointerEvents="none"
+          >
             <Animated.View style={comboLabelStyle}>
               <Text style={styles.comboFloatLabel}>COMBO</Text>
             </Animated.View>
@@ -897,14 +1031,14 @@ export function GameScreen() {
         ) : null}
 
         <PerfectSwoosh
-          visible={phase !== 'gameover' && feedback?.label === 'Perfect'}
+          visible={phase !== "gameover" && feedback?.label === "Perfect"}
           burstKey={perfectBurstKey}
           points={feedback?.points ?? 0}
           combo={feedback?.comboGrew ? feedback.combo : 0}
         />
 
         <MissBreak
-          visible={phase !== 'gameover' && feedback?.label === 'Miss'}
+          visible={phase !== "gameover" && feedback?.label === "Miss"}
           burstKey={missBurstKey}
           livesLeft={lives}
         />
@@ -914,29 +1048,39 @@ export function GameScreen() {
             styles.feedback,
             feedback ? FEEDBACK_SLOT_STYLE[feedback.slot] : null,
             feedbackStyle,
-            phase === 'gameover' && styles.hidden,
+            phase === "gameover" && styles.hidden,
           ]}
-          pointerEvents="none">
-          {feedback && feedback.label !== 'Perfect' && feedback.label !== 'Miss' ? (
+          pointerEvents="none"
+        >
+          {feedback &&
+          feedback.label !== "Perfect" &&
+          feedback.label !== "Miss" ? (
             <>
               <Text
                 style={[
                   styles.feedbackLabel,
-                  feedback.label === 'Great' && styles.feedbackLabelGreat,
+                  feedback.label === "Great" && styles.feedbackLabelGreat,
                   { color: LABEL_COLORS[feedback.label] },
-                  (feedback.slot === 'left' || feedback.slot === 'topLeft') && styles.feedbackAlignStart,
-                  (feedback.slot === 'right' || feedback.slot === 'topRight') && styles.feedbackAlignEnd,
+                  (feedback.slot === "left" || feedback.slot === "topLeft") &&
+                    styles.feedbackAlignStart,
+                  (feedback.slot === "right" || feedback.slot === "topRight") &&
+                    styles.feedbackAlignEnd,
                 ]}
-                numberOfLines={1}>
+                numberOfLines={1}
+              >
                 {feedback.label.toUpperCase()}!
               </Text>
               {feedback.points > 0 ? (
                 <Text
                   style={[
                     styles.feedbackPoints,
-                    (feedback.slot === 'left' || feedback.slot === 'topLeft') && styles.feedbackAlignStart,
-                    (feedback.slot === 'right' || feedback.slot === 'topRight') && styles.feedbackAlignEnd,
-                  ]}>
+                    (feedback.slot === "left" || feedback.slot === "topLeft") &&
+                      styles.feedbackAlignStart,
+                    (feedback.slot === "right" ||
+                      feedback.slot === "topRight") &&
+                      styles.feedbackAlignEnd,
+                  ]}
+                >
                   +{feedback.points}
                 </Text>
               ) : null}
@@ -944,9 +1088,13 @@ export function GameScreen() {
                 <Text
                   style={[
                     styles.feedbackMilestone,
-                    (feedback.slot === 'left' || feedback.slot === 'topLeft') && styles.feedbackAlignStart,
-                    (feedback.slot === 'right' || feedback.slot === 'topRight') && styles.feedbackAlignEnd,
-                  ]}>
+                    (feedback.slot === "left" || feedback.slot === "topLeft") &&
+                      styles.feedbackAlignStart,
+                    (feedback.slot === "right" ||
+                      feedback.slot === "topRight") &&
+                      styles.feedbackAlignEnd,
+                  ]}
+                >
                   LVL {round.level} +{feedback.milestone}
                 </Text>
               ) : null}
@@ -954,9 +1102,13 @@ export function GameScreen() {
                 <Text
                   style={[
                     styles.feedbackCombo,
-                    (feedback.slot === 'left' || feedback.slot === 'topLeft') && styles.feedbackAlignStart,
-                    (feedback.slot === 'right' || feedback.slot === 'topRight') && styles.feedbackAlignEnd,
-                  ]}>
+                    (feedback.slot === "left" || feedback.slot === "topLeft") &&
+                      styles.feedbackAlignStart,
+                    (feedback.slot === "right" ||
+                      feedback.slot === "topRight") &&
+                      styles.feedbackAlignEnd,
+                  ]}
+                >
                   COMBO x{feedback.combo}
                 </Text>
               ) : null}
@@ -964,19 +1116,25 @@ export function GameScreen() {
           ) : null}
         </Animated.View>
 
-        <CountdownBurst value={countdown} visible={phase === 'countdown'} />
+        <CountdownBurst value={countdown} visible={phase === "countdown"} />
 
-        {phase === 'gameover' ? (
+        {phase === "gameover" ? (
           <View style={styles.gameOverPanel} pointerEvents="box-none">
             <Text
-              style={[styles.gameOverTitle, isNewBest && styles.gameOverTitleBest]}
-              pointerEvents="none">
-              {isNewBest ? 'NEW BEST!' : 'GAME OVER'}
+              style={[
+                styles.gameOverTitle,
+                isNewBest && styles.gameOverTitleBest,
+              ]}
+              pointerEvents="none"
+            >
+              {isNewBest ? "NEW BEST!" : "GAME OVER"}
             </Text>
             <GameCta
               label="RETRY"
               face={isNewBest ? GameColors.bubble : GameColors.playBlue}
-              depth={isNewBest ? GameColors.bubbleDark : GameColors.playBlueDark}
+              depth={
+                isNewBest ? GameColors.bubbleDark : GameColors.playBlueDark
+              }
               onPress={() => {
                 void gameHaptics.next();
                 startRun(dailyMode);
@@ -985,8 +1143,11 @@ export function GameScreen() {
           </View>
         ) : null}
 
-        {phase === 'ready' ? (
-          <View style={[styles.menuCol, { bottom: menuBottom }]} pointerEvents="box-none">
+        {phase === "ready" ? (
+          <View
+            style={[styles.menuCol, { bottom: menuBottom }]}
+            pointerEvents="box-none"
+          >
             <GameCta
               label="PLAY"
               subtitle="TAP THE ZONE"
@@ -1009,13 +1170,18 @@ export function GameScreen() {
           onPress={openSettings}
           hitSlop={10}
           accessibilityLabel={
-            phase !== 'ready' && phase !== 'gameover' ? 'Pause' : 'Settings'
-          }>
+            phase !== "ready" && phase !== "gameover" ? "Pause" : "Settings"
+          }
+        >
           <SymbolView
             name={
-              phase !== 'ready' && phase !== 'gameover'
-                ? { ios: 'pause.fill', android: 'pause', web: 'pause' }
-                : { ios: 'gearshape.fill', android: 'settings', web: 'settings' }
+              phase !== "ready" && phase !== "gameover"
+                ? { ios: "pause.fill", android: "pause", web: "pause" }
+                : {
+                    ios: "gearshape.fill",
+                    android: "settings",
+                    web: "settings",
+                  }
             }
             size={20}
             tintColor={GameColors.white}
@@ -1029,7 +1195,7 @@ export function GameScreen() {
           style={styles.hitLayer}
           onPressIn={onTap}
           accessibilityRole="button"
-          android_ripple={{ color: 'transparent' }}
+          android_ripple={{ color: "transparent" }}
         />
       ) : null}
 
@@ -1037,17 +1203,20 @@ export function GameScreen() {
         visible={settingsOpen}
         soundOn={!muted}
         hapticsOn={persist?.hapticsEnabled !== false}
+        canRestart={phase !== "ready"}
         onClose={closeSettings}
         onToggleSound={() => void toggleSound()}
         onToggleHaptics={() => void toggleHaptics()}
+        onRestart={restartFromSettings}
         onSendFeedback={() => void sendFeedback()}
+        onDeleteData={() => void deleteData()}
       />
     </View>
   );
 }
 
 const fillParent = {
-  position: 'absolute' as const,
+  position: "absolute" as const,
   left: 0,
   right: 0,
   top: 0,
@@ -1055,14 +1224,14 @@ const fillParent = {
 };
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: '#1E8CFF' },
+  root: { flex: 1, backgroundColor: "#1E8CFF" },
   backdrop: {
     ...fillParent,
     zIndex: 0,
   },
   backdropImage: {
-    width: '100%',
-    height: '100%',
+    width: "100%",
+    height: "100%",
   },
   hitLayer: {
     ...fillParent,
@@ -1075,21 +1244,21 @@ const styles = StyleSheet.create({
     elevation: 30,
   },
   topBlock: {
-    width: '100%',
+    width: "100%",
     gap: 6,
   },
   topRow: {
-    width: '100%',
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
+    width: "100%",
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
     gap: 10,
     minHeight: 40,
   },
   topLeft: {
     flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     gap: 8,
     paddingRight: 4,
   },
@@ -1099,7 +1268,7 @@ const styles = StyleSheet.create({
     marginLeft: -6,
   },
   settingsBtn: {
-    position: 'absolute',
+    position: "absolute",
     left: 16,
     zIndex: 45,
     width: 44,
@@ -1108,8 +1277,8 @@ const styles = StyleSheet.create({
     backgroundColor: GameColors.playBlue,
     borderWidth: 2.5,
     borderColor: GameColors.ink,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
   },
   bestPill: {
     paddingHorizontal: 12,
@@ -1117,8 +1286,8 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     borderWidth: 2.5,
     borderColor: GameColors.ink,
-    backgroundColor: '#FFF4C2',
-    alignItems: 'center',
+    backgroundColor: "#FFF4C2",
+    alignItems: "center",
     minWidth: 64,
     flexShrink: 0,
   },
@@ -1139,17 +1308,17 @@ const styles = StyleSheet.create({
     color: GameColors.panelInk,
     marginTop: 1,
   },
-  statsBlock: { marginTop: 2, alignItems: 'center' },
+  statsBlock: { marginTop: 2, alignItems: "center" },
   heartsAboveScore: {
     marginBottom: 6,
-    alignItems: 'center',
+    alignItems: "center",
   },
   bigScore: {
     fontFamily: GameFonts.display,
     fontSize: 52,
     lineHeight: 56,
     color: GameColors.white,
-    textShadowColor: 'rgba(26,28,44,0.4)',
+    textShadowColor: "rgba(26,28,44,0.4)",
     textShadowOffset: { width: 0, height: 3 },
     textShadowRadius: 0,
   },
@@ -1161,9 +1330,9 @@ const styles = StyleSheet.create({
   },
   runStats: {
     marginTop: 8,
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: 'rgba(255,255,255,0.94)',
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "rgba(255,255,255,0.94)",
     borderRadius: 16,
     borderWidth: 2.5,
     borderColor: GameColors.ink,
@@ -1172,7 +1341,7 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   runStat: {
-    alignItems: 'center',
+    alignItems: "center",
     minWidth: 52,
   },
   runStatLabel: {
@@ -1191,13 +1360,13 @@ const styles = StyleSheet.create({
     width: 2,
     height: 28,
     borderRadius: 1,
-    backgroundColor: 'rgba(26,28,44,0.15)',
+    backgroundColor: "rgba(26,28,44,0.15)",
   },
   comboFloat: {
-    position: 'absolute',
+    position: "absolute",
     left: 0,
     right: 0,
-    alignItems: 'center',
+    alignItems: "center",
     zIndex: 30,
   },
   comboFloatLabel: {
@@ -1206,7 +1375,7 @@ const styles = StyleSheet.create({
     lineHeight: 16,
     letterSpacing: 2,
     color: GameColors.white,
-    textAlign: 'center',
+    textAlign: "center",
     textShadowColor: GameColors.ink,
     textShadowOffset: { width: 0, height: 2 },
     textShadowRadius: 0,
@@ -1215,18 +1384,18 @@ const styles = StyleSheet.create({
     fontFamily: GameFonts.display,
     fontSize: 52,
     lineHeight: 56,
-    color: '#FFE96A',
-    textAlign: 'center',
+    color: "#FFE96A",
+    textAlign: "center",
     textShadowColor: GameColors.ink,
     textShadowOffset: { width: 0, height: 4 },
     textShadowRadius: 0,
   },
   meterAnchor: {
-    position: 'absolute',
+    position: "absolute",
     left: 0,
     right: 0,
-    alignItems: 'center',
-    justifyContent: 'flex-end',
+    alignItems: "center",
+    justifyContent: "flex-end",
     zIndex: 1,
   },
   meterDimmed: {
@@ -1235,8 +1404,8 @@ const styles = StyleSheet.create({
   hidden: { opacity: 0 },
   gameOverPanel: {
     ...fillParent,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
     zIndex: 40,
     gap: 18,
     paddingHorizontal: 24,
@@ -1245,8 +1414,8 @@ const styles = StyleSheet.create({
     fontFamily: GameFonts.display,
     fontSize: 52,
     lineHeight: 56,
-    textAlign: 'center',
-    color: '#FF4B4B',
+    textAlign: "center",
+    color: "#FF4B4B",
     textShadowColor: GameColors.ink,
     textShadowOffset: { width: 0, height: 4 },
     textShadowRadius: 0,
@@ -1255,12 +1424,12 @@ const styles = StyleSheet.create({
     color: GameColors.lemon,
   },
   feedback: {
-    position: 'absolute',
+    position: "absolute",
     zIndex: 35,
-    maxWidth: '52%',
+    maxWidth: "52%",
   },
-  feedbackAlignStart: { textAlign: 'left' },
-  feedbackAlignEnd: { textAlign: 'right' },
+  feedbackAlignStart: { textAlign: "left" },
+  feedbackAlignEnd: { textAlign: "right" },
   feedbackLabel: {
     fontFamily: GameFonts.display,
     fontSize: 28,
@@ -1305,15 +1474,15 @@ const styles = StyleSheet.create({
     textShadowRadius: 0,
   },
   menuCol: {
-    position: 'absolute',
+    position: "absolute",
     left: 28,
     right: 28,
     gap: 14,
     zIndex: 40,
-    alignItems: 'center',
+    alignItems: "center",
   },
   ctaPressable: {
-    width: '100%',
+    width: "100%",
     maxWidth: 320,
   },
   ctaPressableDown: {
@@ -1323,16 +1492,16 @@ const styles = StyleSheet.create({
     borderRadius: 22,
     borderWidth: 4,
     borderColor: GameColors.ink,
-    overflow: 'hidden',
+    overflow: "hidden",
   },
   ctaFace: {
     minHeight: 64,
     paddingHorizontal: 20,
     paddingTop: 10,
     paddingBottom: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-    overflow: 'hidden',
+    alignItems: "center",
+    justifyContent: "center",
+    overflow: "hidden",
   },
   ctaFaceUp: {
     marginBottom: 5,
@@ -1343,13 +1512,13 @@ const styles = StyleSheet.create({
     marginTop: 5,
   },
   ctaShine: {
-    position: 'absolute',
+    position: "absolute",
     left: 10,
     right: 10,
     top: 6,
     height: 14,
     borderRadius: 10,
-    backgroundColor: 'rgba(255,255,255,0.28)',
+    backgroundColor: "rgba(255,255,255,0.28)",
   },
   ctaText: {
     fontFamily: GameFonts.display,
@@ -1357,7 +1526,7 @@ const styles = StyleSheet.create({
     lineHeight: 34,
     color: GameColors.white,
     letterSpacing: 1.5,
-    textShadowColor: 'rgba(26,28,44,0.35)',
+    textShadowColor: "rgba(26,28,44,0.35)",
     textShadowOffset: { width: 0, height: 2 },
     textShadowRadius: 0,
   },
@@ -1366,8 +1535,7 @@ const styles = StyleSheet.create({
     fontFamily: GameFonts.soft,
     fontSize: 12,
     lineHeight: 14,
-    color: 'rgba(255,255,255,0.92)',
+    color: "rgba(255,255,255,0.92)",
     letterSpacing: 0.8,
   },
 });
-
