@@ -26,6 +26,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { GameColors, GameFonts } from '@/constants/gameTheme';
 import { CountdownBurst } from '@/game/CountdownBurst';
 import { Hearts } from '@/game/Hearts';
+import { MissBreak } from '@/game/MissBreak';
+import { PerfectSwoosh } from '@/game/PerfectSwoosh';
 import { gameHaptics, setGameHapticsEnabled } from '@/game/haptics';
 import { createRng, makeRound } from '@/game/levels';
 import {
@@ -112,10 +114,10 @@ const emptyStats = (): SessionStats => ({
 });
 
 const LABEL_COLORS: Record<RoundLabel, string> = {
-  Perfect: '#FF3B4A',
-  Great: '#FF8A00',
+  Perfect: '#FFE14A',
+  Great: '#E24B2D',
   Good: '#58CC02',
-  Nice: '#1CB0F6',
+  Nice: '#1B3A8C',
   Close: '#FFC800',
   Miss: '#6B7280',
 };
@@ -154,7 +156,7 @@ function GameCta({ label, subtitle, face, depth, onPress }: GameCtaProps) {
 
 export function GameScreen() {
   const insets = useSafeAreaInsets();
-  const { height: windowH } = useWindowDimensions();
+  const { height: windowH, width: windowW } = useWindowDimensions();
   const [persist, setPersist] = useState<PersistState | null>(null);
   const muted = Boolean(persist?.soundMuted);
   const { play } = useSounds(muted);
@@ -170,6 +172,8 @@ export function GameScreen() {
   const [dailyMode, setDailyMode] = useState(false);
   const [stats, setStats] = useState<SessionStats>(emptyStats);
   const [feedback, setFeedback] = useState<Feedback | null>(null);
+  const [perfectBurstKey, setPerfectBurstKey] = useState(0);
+  const [missBurstKey, setMissBurstKey] = useState(0);
   const feedbackSlotRef = useRef<FeedbackSlot | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
 
@@ -180,6 +184,7 @@ export function GameScreen() {
   const feedbackOpacity = useSharedValue(0);
   const feedbackScale = useSharedValue(0.7);
   const comboPulse = useSharedValue(1);
+  const comboLabelOpacity = useSharedValue(0);
   const isFilling = useSharedValue(0);
 
   const phaseRef = useRef<Phase>('ready');
@@ -187,6 +192,8 @@ export function GameScreen() {
   const scoreRef = useRef(0);
   const livesRef = useRef(STARTING_LIVES);
   const comboRef = useRef(0);
+  /** "COMBO" label only once per streak, then multiplier alone */
+  const comboIntroShownRef = useRef(false);
   const lockingTap = useRef(false);
   const rngRef = useRef<() => number>(Math.random);
   const autoTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -236,9 +243,50 @@ export function GameScreen() {
   }, []);
 
   const showFeedback = (next: Omit<Feedback, 'slot'>) => {
+    const isPerfect = next.label === 'Perfect';
+    const isMiss = next.label === 'Miss';
     const slot = nextFeedbackSlot(feedbackSlotRef.current);
     feedbackSlotRef.current = slot;
     setFeedback({ ...next, slot });
+
+    const pulseCombo = (showIntro: boolean) => {
+      comboPulse.value = withSequence(
+        withTiming(1.28, { duration: 120, easing: Easing.out(Easing.cubic) }),
+        withTiming(1, { duration: 200, easing: Easing.inOut(Easing.quad) }),
+      );
+      if (!showIntro) return;
+      // First streak only — then just the multiplier
+      comboLabelOpacity.value = 0;
+      comboLabelOpacity.value = withSequence(
+        withTiming(1, { duration: 90 }),
+        withDelay(650, withTiming(0, { duration: 320, easing: Easing.in(Easing.quad) })),
+      );
+      comboIntroShownRef.current = true;
+    };
+
+    if (next.combo <= 1) {
+      comboIntroShownRef.current = false;
+      comboLabelOpacity.value = 0;
+    }
+
+    // Perfect / Miss get dedicated center callouts; others keep side chips
+    if (isPerfect) {
+      feedbackOpacity.value = 0;
+      setPerfectBurstKey((k) => k + 1);
+      if (next.comboGrew && next.combo > 1) {
+        pulseCombo(!comboIntroShownRef.current);
+      }
+      return;
+    }
+
+    if (isMiss) {
+      feedbackOpacity.value = 0;
+      setMissBurstKey((k) => k + 1);
+      comboLabelOpacity.value = 0;
+      comboIntroShownRef.current = false;
+      return;
+    }
+
     feedbackOpacity.value = 0;
     feedbackScale.value = 0.55;
     feedbackOpacity.value = withSequence(
@@ -249,11 +297,8 @@ export function GameScreen() {
       withTiming(1.18, { duration: 140, easing: Easing.out(Easing.cubic) }),
       withTiming(1, { duration: 160, easing: Easing.inOut(Easing.quad) }),
     );
-    if (next.comboGrew && next.combo > 0) {
-      comboPulse.value = withSequence(
-        withTiming(1.22, { duration: 120, easing: Easing.out(Easing.cubic) }),
-        withTiming(1, { duration: 180, easing: Easing.inOut(Easing.quad) }),
-      );
+    if (next.comboGrew && next.combo > 1) {
+      pulseCombo(!comboIntroShownRef.current);
     }
   };
 
@@ -324,7 +369,7 @@ export function GameScreen() {
                 return;
               }
               advanceRef.current();
-            }, 420);
+            }, 620);
           }
           return next;
         }
@@ -344,7 +389,7 @@ export function GameScreen() {
             return;
           }
           advanceRef.current();
-        }, result.result === 'perfect' ? 380 : 480);
+        }, result.result === 'perfect' ? 900 : 480);
         return next;
       });
     },
@@ -559,6 +604,8 @@ export function GameScreen() {
     livesRef.current = STARTING_LIVES;
     setCombo(0);
     comboRef.current = 0;
+    comboIntroShownRef.current = false;
+    comboLabelOpacity.value = 0;
     setStats(emptyStats());
     setIsNewBest(false);
     setFeedback(null);
@@ -720,7 +767,13 @@ export function GameScreen() {
     transform: [{ scale: feedbackScale.value }],
   }));
   const comboBadgeStyle = useAnimatedStyle(() => ({
-    transform: [{ scale: comboPulse.value }],
+    transform: [{ translateX: windowW * 0.3 }, { scale: comboPulse.value }],
+  }));
+  const comboLabelStyle = useAnimatedStyle(() => ({
+    opacity: comboLabelOpacity.value,
+    height: comboLabelOpacity.value * 18,
+    marginBottom: comboLabelOpacity.value * 2,
+    overflow: 'hidden' as const,
   }));
 
   const accuracy =
@@ -732,7 +785,6 @@ export function GameScreen() {
   // Pin meter base to the yellow pad in the background art
   const meterBottom = Math.max(insets.bottom + 4, windowH * (1 - PAD_SURFACE_Y));
   const menuBottom = meterBottom + meterWrapH * 0.42;
-
   return (
     <View style={styles.root}>
       <View style={styles.backdrop} pointerEvents="none">
@@ -762,6 +814,8 @@ export function GameScreen() {
             fill={fill}
             zoneTarget={zoneTarget}
             zoneHalf={zoneHalf}
+            perfectRatio={round.zoneHalf > 0 ? round.perfectHalf / round.zoneHalf : 0.18}
+            greatRatio={round.zoneHalf > 0 ? round.greatHalf / round.zoneHalf : 0.48}
             skin={skin}
             scale={meterScale}
           />
@@ -776,38 +830,31 @@ export function GameScreen() {
           <View style={styles.topRow} pointerEvents="box-none">
             <View style={styles.topLeft} pointerEvents="none">
               <Image source={LOGO} style={styles.logoHud} contentFit="contain" />
-              {phase !== 'ready' && phase !== 'gameover' ? (
-                <Hearts lives={lives} max={STARTING_LIVES} />
-              ) : null}
             </View>
 
-            <Pressable style={styles.iconBtn} onPress={openSettings} hitSlop={10} accessibilityLabel="Settings">
-              <SymbolView
-                name={{ ios: 'gearshape.fill', android: 'settings', web: 'settings' }}
-                size={20}
-                tintColor={GameColors.white}
-                weight="bold"
-              />
-            </Pressable>
-          </View>
-
-          <View style={styles.bestPill} pointerEvents="none">
-            <Text style={styles.bestLabel}>{dailyMode ? 'DAILY' : 'BEST'}</Text>
-            <Text style={styles.bestValue}>
-              {dailyMode
-                ? persist?.dailyBest.date === todayKey()
-                  ? persist.dailyBest.score
-                  : 0
-                : (persist?.highScore ?? 0)}
-            </Text>
-            {!dailyMode ? (
-              <Text style={styles.bestSub}>LVL {persist?.bestLevel ?? 0}</Text>
-            ) : null}
+            <View style={styles.bestPill} pointerEvents="none">
+              <Text style={styles.bestLabel}>{dailyMode ? 'DAILY' : 'BEST'}</Text>
+              <Text style={styles.bestValue}>
+                {dailyMode
+                  ? persist?.dailyBest.date === todayKey()
+                    ? persist.dailyBest.score
+                    : 0
+                  : (persist?.highScore ?? 0)}
+              </Text>
+              {!dailyMode ? (
+                <Text style={styles.bestSub}>LVL {persist?.bestLevel ?? 0}</Text>
+              ) : null}
+            </View>
           </View>
         </View>
 
         {phase !== 'ready' ? (
           <View style={styles.statsBlock} pointerEvents="none">
+            {phase !== 'gameover' ? (
+              <View style={styles.heartsAboveScore}>
+                <Hearts lives={lives} max={STARTING_LIVES} />
+              </View>
+            ) : null}
             <Text style={styles.bigScore}>{score}</Text>
             {phase === 'gameover' ? (
               <View style={styles.runStats}>
@@ -827,20 +874,40 @@ export function GameScreen() {
                 </View>
               </View>
             ) : (
-              <>
-                <Text style={styles.metaLine}>LVL {round.level}</Text>
-                {combo > 1 ? (
-                  <Animated.View style={[styles.comboBadge, comboBadgeStyle]}>
-                    <Text style={styles.comboBadgeLabel}>COMBO</Text>
-                    <Text style={styles.comboBadgeValue}>
-                      x{combo} · {comboMultiplier(combo).toFixed(2)}
-                    </Text>
-                  </Animated.View>
-                ) : null}
-              </>
+              <Text style={styles.metaLine}>LVL {round.level}</Text>
             )}
           </View>
         ) : null}
+
+        {phase !== 'ready' && phase !== 'gameover' && combo > 1 ? (
+          <Animated.View
+            style={[
+              styles.comboFloat,
+              { bottom: Math.max(insets.bottom + 6, meterBottom - 64) },
+              comboBadgeStyle,
+            ]}
+            pointerEvents="none">
+            <Animated.View style={comboLabelStyle}>
+              <Text style={styles.comboFloatLabel}>COMBO</Text>
+            </Animated.View>
+            <Text style={styles.comboFloatValue}>
+              ×{comboMultiplier(combo).toFixed(2)}
+            </Text>
+          </Animated.View>
+        ) : null}
+
+        <PerfectSwoosh
+          visible={phase !== 'gameover' && feedback?.label === 'Perfect'}
+          burstKey={perfectBurstKey}
+          points={feedback?.points ?? 0}
+          combo={feedback?.comboGrew ? feedback.combo : 0}
+        />
+
+        <MissBreak
+          visible={phase !== 'gameover' && feedback?.label === 'Miss'}
+          burstKey={missBurstKey}
+          livesLeft={lives}
+        />
 
         <Animated.View
           style={[
@@ -850,15 +917,17 @@ export function GameScreen() {
             phase === 'gameover' && styles.hidden,
           ]}
           pointerEvents="none">
-          {feedback ? (
+          {feedback && feedback.label !== 'Perfect' && feedback.label !== 'Miss' ? (
             <>
               <Text
                 style={[
                   styles.feedbackLabel,
+                  feedback.label === 'Great' && styles.feedbackLabelGreat,
                   { color: LABEL_COLORS[feedback.label] },
                   (feedback.slot === 'left' || feedback.slot === 'topLeft') && styles.feedbackAlignStart,
                   (feedback.slot === 'right' || feedback.slot === 'topRight') && styles.feedbackAlignEnd,
-                ]}>
+                ]}
+                numberOfLines={1}>
                 {feedback.label.toUpperCase()}!
               </Text>
               {feedback.points > 0 ? (
@@ -934,6 +1003,25 @@ export function GameScreen() {
             />
           </View>
         ) : null}
+
+        <Pressable
+          style={[styles.settingsBtn, { bottom: insets.bottom + 16 }]}
+          onPress={openSettings}
+          hitSlop={10}
+          accessibilityLabel={
+            phase !== 'ready' && phase !== 'gameover' ? 'Pause' : 'Settings'
+          }>
+          <SymbolView
+            name={
+              phase !== 'ready' && phase !== 'gameover'
+                ? { ios: 'pause.fill', android: 'pause', web: 'pause' }
+                : { ios: 'gearshape.fill', android: 'settings', web: 'settings' }
+            }
+            size={20}
+            tintColor={GameColors.white}
+            weight="bold"
+          />
+        </Pressable>
       </View>
 
       {hitEnabled ? (
@@ -1010,27 +1098,29 @@ const styles = StyleSheet.create({
     height: 78,
     marginLeft: -6,
   },
-  iconBtn: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+  settingsBtn: {
+    position: 'absolute',
+    left: 16,
+    zIndex: 45,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     backgroundColor: GameColors.playBlue,
     borderWidth: 2.5,
     borderColor: GameColors.ink,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  iconBtnText: { fontSize: 16 },
   bestPill: {
-    alignSelf: 'flex-end',
-    paddingHorizontal: 14,
-    paddingVertical: 7,
+    paddingHorizontal: 12,
+    paddingVertical: 5,
     borderRadius: 14,
     borderWidth: 2.5,
     borderColor: GameColors.ink,
     backgroundColor: '#FFF4C2',
     alignItems: 'center',
-    minWidth: 72,
+    minWidth: 64,
+    flexShrink: 0,
   },
   bestLabel: {
     fontFamily: GameFonts.soft,
@@ -1050,6 +1140,10 @@ const styles = StyleSheet.create({
     marginTop: 1,
   },
   statsBlock: { marginTop: 2, alignItems: 'center' },
+  heartsAboveScore: {
+    marginBottom: 6,
+    alignItems: 'center',
+  },
   bigScore: {
     fontFamily: GameFonts.display,
     fontSize: 52,
@@ -1060,8 +1154,9 @@ const styles = StyleSheet.create({
     textShadowRadius: 0,
   },
   metaLine: {
-    fontFamily: GameFonts.body,
-    fontSize: 15,
+    fontFamily: GameFonts.display,
+    fontSize: 22,
+    lineHeight: 26,
     color: GameColors.ink,
   },
   runStats: {
@@ -1098,28 +1193,33 @@ const styles = StyleSheet.create({
     borderRadius: 1,
     backgroundColor: 'rgba(26,28,44,0.15)',
   },
-  comboBadge: {
-    marginTop: 6,
-    paddingHorizontal: 14,
-    paddingVertical: 5,
-    borderRadius: 999,
-    borderWidth: 2.5,
-    borderColor: GameColors.ink,
-    backgroundColor: GameColors.lemon,
+  comboFloat: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
     alignItems: 'center',
-    minWidth: 110,
+    zIndex: 30,
   },
-  comboBadgeLabel: {
-    fontFamily: GameFonts.soft,
-    fontSize: 11,
-    color: GameColors.panelInk,
-    letterSpacing: 0.5,
-  },
-  comboBadgeValue: {
+  comboFloatLabel: {
     fontFamily: GameFonts.display,
-    fontSize: 18,
-    lineHeight: 22,
-    color: GameColors.ink,
+    fontSize: 14,
+    lineHeight: 16,
+    letterSpacing: 2,
+    color: GameColors.white,
+    textAlign: 'center',
+    textShadowColor: GameColors.ink,
+    textShadowOffset: { width: 0, height: 2 },
+    textShadowRadius: 0,
+  },
+  comboFloatValue: {
+    fontFamily: GameFonts.display,
+    fontSize: 52,
+    lineHeight: 56,
+    color: '#FFE96A',
+    textAlign: 'center',
+    textShadowColor: GameColors.ink,
+    textShadowOffset: { width: 0, height: 4 },
+    textShadowRadius: 0,
   },
   meterAnchor: {
     position: 'absolute',
@@ -1157,7 +1257,7 @@ const styles = StyleSheet.create({
   feedback: {
     position: 'absolute',
     zIndex: 35,
-    maxWidth: '46%',
+    maxWidth: '52%',
   },
   feedbackAlignStart: { textAlign: 'left' },
   feedbackAlignEnd: { textAlign: 'right' },
@@ -1168,6 +1268,12 @@ const styles = StyleSheet.create({
     textShadowColor: GameColors.ink,
     textShadowOffset: { width: 0, height: 2 },
     textShadowRadius: 0,
+  },
+  feedbackLabelGreat: {
+    fontSize: 44,
+    lineHeight: 48,
+    letterSpacing: 0.5,
+    textShadowOffset: { width: 0, height: 3 },
   },
   feedbackPoints: {
     marginTop: 2,

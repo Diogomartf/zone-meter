@@ -3,8 +3,8 @@ import type { RoundConfig, RoundLabel, RoundOutcome } from '@/game/types';
 
 export const STARTING_LIVES = 3;
 export const MAX_COMBO_MULT = 5;
-/** Barely under the zone = survive as Close */
-export const NEAR_MISS_SLACK = 0.045;
+/** Outside the markers is a miss — no near-miss forgiveness */
+export const NEAR_MISS_SLACK = 0;
 /** Depth scaling on base points — a bit more reward for going further */
 export const LEVEL_BONUS_PER_LEVEL = 0.055;
 
@@ -14,7 +14,6 @@ export function comboMultiplier(combo: number) {
 
 export function nextCombo(prev: number, label: RoundLabel) {
   if (label === 'Perfect' || label === 'Great') return prev + 1;
-  if (label === 'Good') return prev;
   if (label === 'Nice' || label === 'Close') return Math.max(0, prev - 1);
   return 0;
 }
@@ -42,6 +41,7 @@ export function scoreFill(
   const streak = comboActive ? comboBefore : 0;
   const mult = comboMultiplier(streak);
 
+  // Perfect = bullseye center / strike line
   if (distance <= live.perfectHalf) {
     const basePoints = Math.round(100 * levelBonus);
     const points = Math.round(basePoints * mult) + milestone;
@@ -59,40 +59,38 @@ export function scoreFill(
     };
   }
 
-  if (distance <= live.zoneHalf) {
-    const t = 1 - distance / live.zoneHalf;
-    const label: RoundLabel = t >= 0.66 ? 'Great' : t >= 0.33 ? 'Good' : 'Nice';
-    const basePoints = Math.round((20 + t * 60) * levelBonus);
+  // Great = red ring
+  if (distance <= live.greatHalf) {
+    const t = 1 - (distance - live.perfectHalf) / Math.max(0.001, live.greatHalf - live.perfectHalf);
+    const basePoints = Math.round((55 + t * 30) * levelBonus);
     const points = Math.round(basePoints * mult) + milestone;
-    const combo = comboActive ? nextCombo(streak, label) : 0;
     return {
       result: 'zone',
-      label,
+      label: 'Great',
       fill,
       basePoints,
       points,
       distance,
-      combo,
+      combo: comboActive ? nextCombo(streak, 'Great') : 0,
       multiplier: mult,
-      coins: (label === 'Great' ? 3 : label === 'Good' ? 2 : 1) + (milestone > 0 ? 1 : 0),
+      coins: 3 + (milestone > 0 ? 1 : 0),
       costsLife: false,
     };
   }
 
-  // Hold-your-nerve: barely UNDER the zone survives; overshoot does not
-  const zoneLow = live.target - live.zoneHalf;
-  const underBy = zoneLow - fill;
-  if (underBy > 0 && underBy <= NEAR_MISS_SLACK) {
-    const basePoints = Math.round(12 * levelBonus);
-    const points = Math.round(basePoints * Math.max(1, mult * 0.5)) + milestone;
+  // Nice = blue ring out to the striped markers. Outside markers = miss.
+  if (distance <= live.zoneHalf) {
+    const t = 1 - (distance - live.greatHalf) / Math.max(0.001, live.zoneHalf - live.greatHalf);
+    const basePoints = Math.round((22 + t * 28) * levelBonus);
+    const points = Math.round(basePoints * mult) + milestone;
     return {
-      result: 'near',
-      label: 'Close',
+      result: 'zone',
+      label: 'Nice',
       fill,
       basePoints,
       points,
       distance,
-      combo: comboActive ? nextCombo(streak, 'Close') : 0,
+      combo: comboActive ? nextCombo(streak, 'Nice') : 0,
       multiplier: mult,
       coins: 1 + (milestone > 0 ? 1 : 0),
       costsLife: false,

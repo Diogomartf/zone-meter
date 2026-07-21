@@ -33,7 +33,9 @@ export async function loadPersist(): Promise<PersistState> {
         ? (parsed.unlockedSkins as SkinId[])
         : ['toxic'],
       equippedSkin: parsed.equippedSkin ?? DEFAULT_SKIN,
-      dailyBest: parsed.dailyBest ?? { date: '', score: 0 },
+      dailyBest: parsed.dailyBest
+        ? { date: parsed.dailyBest.date ?? '', score: Number(parsed.dailyBest.score) || 0 }
+        : { date: '', score: 0 },
       soundMuted: Boolean(parsed.soundMuted),
       hapticsEnabled: parsed.hapticsEnabled !== false,
       bestLevel: Number.isFinite(parsed.bestLevel) ? Number(parsed.bestLevel) : 0,

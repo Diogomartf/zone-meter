@@ -17,6 +17,10 @@ type Props = {
   fill: SharedValue<number>;
   zoneTarget: SharedValue<number>;
   zoneHalf: SharedValue<number>;
+  /** Perfect band as fraction of zoneHalf (0–1) */
+  perfectRatio: number;
+  /** Great band outer edge as fraction of zoneHalf (0–1) */
+  greatRatio: number;
   skin: SkinDef;
   /** Visual scale of the meter tube */
   scale?: number;
@@ -26,10 +30,19 @@ const BASE_H = 340;
 const BASE_W = 100;
 const TICK_COUNT = 7;
 
+/** Bauhaus bullseye — blue Nice, red Great, yellow Perfect line */
+const EYE = {
+  nice: '#1B3A8C',
+  great: '#E24B2D',
+  perfect: '#FFE14A',
+} as const;
+
 function VerticalMeterComponent({
   fill,
   zoneTarget,
   zoneHalf,
+  perfectRatio,
+  greatRatio,
   skin,
   scale = 1,
 }: Props) {
@@ -38,9 +51,63 @@ function VerticalMeterComponent({
   const innerH = meterH - 20;
   const wobble = useSharedValue(0);
 
+  const pRatio = Math.min(Math.max(perfectRatio, 0.06), 0.28);
+  const gRatio = Math.min(Math.max(greatRatio, pRatio + 0.08), 0.85);
+  const niceFlex = Math.max(0.08, 1 - gRatio);
+  const greatFlex = Math.max(0.08, gRatio - pRatio);
+  const perfectFlex = Math.max(0.1, pRatio * 2);
+  const totalFlex = niceFlex * 2 + greatFlex * 2 + perfectFlex;
+
+  // Vertical Bauhaus bullseye: Nice / Great / Perfect / Great / Nice
+  const eyeGradient = useMemo(() => {
+    const n1 = niceFlex / totalFlex;
+    const g1 = (niceFlex + greatFlex) / totalFlex;
+    const p1 = (niceFlex + greatFlex + perfectFlex) / totalFlex;
+    const g2 = (niceFlex + greatFlex + perfectFlex + greatFlex) / totalFlex;
+    // Crisp band edges
+    const feather = Math.min(0.008, n1 * 0.08, (greatFlex / totalFlex) * 0.08);
+
+    const raw = [
+      0,
+      n1 - feather,
+      n1 + feather,
+      g1 - feather,
+      g1 + feather,
+      p1 - feather,
+      p1 + feather,
+      g2 - feather,
+      g2 + feather,
+      1,
+    ];
+    let prev = 0;
+    const locations = raw.map((v, i) => {
+      if (i === 0) return 0;
+      if (i === raw.length - 1) return 1;
+      const next = Math.max(prev + 0.001, Math.min(0.999, v));
+      prev = next;
+      return next;
+    });
+
+    return {
+      colors: [
+        EYE.nice,
+        EYE.nice,
+        EYE.great,
+        EYE.great,
+        EYE.great,
+        EYE.great,
+        EYE.great,
+        EYE.great,
+        EYE.nice,
+        EYE.nice,
+      ] as const,
+      locations,
+    };
+  }, [niceFlex, greatFlex, perfectFlex, totalFlex]);
+
   useEffect(() => {
     wobble.value = withRepeat(
-      withTiming(1, { duration: 1200, easing: Easing.inOut(Easing.sin) }),
+      withTiming(1, { duration: 700, easing: Easing.inOut(Easing.sin) }),
       -1,
       true,
     );
@@ -59,13 +126,19 @@ function VerticalMeterComponent({
     transform: [{ translateY: (wobble.value - 0.5) * 2.5 }],
   }));
 
+  // Markers = full Nice window (zoneHalf)
   const zoneStyle = useAnimatedStyle(() => {
     const half = zoneHalf.value;
     return {
       bottom: (zoneTarget.value - half) * innerH,
-      height: Math.max(8, half * 2 * innerH),
+      height: Math.max(12, half * 2 * innerH),
     };
   });
+
+  const strikeStyle = useAnimatedStyle(() => ({
+    bottom: zoneTarget.value * innerH - 2,
+    opacity: 0.95,
+  }));
 
   return (
     <View style={[styles.wrap, { width: meterW + 24, height: meterH + 28 }]}>
@@ -92,23 +165,19 @@ function VerticalMeterComponent({
         ]}>
         <View style={styles.shellLip} />
         <View style={[styles.glass, { borderRadius: 18 * scale }]}>
-          {/* Target zone only — no arrow / stop line clutter */}
+          {/* Bauhaus bullseye bands */}
           <Animated.View style={[styles.zoneWrap, zoneStyle]}>
             <LinearGradient
-              colors={[
-                'rgba(255,75,75,0)',
-                'rgba(255,75,75,0.5)',
-                'rgba(255,40,40,0.95)',
-                'rgba(255,75,75,0.5)',
-                'rgba(255,75,75,0)',
-              ]}
-              locations={[0, 0.22, 0.5, 0.78, 1]}
+              colors={[...eyeGradient.colors]}
+              locations={[...eyeGradient.locations]}
               style={StyleSheet.absoluteFill}
             />
           </Animated.View>
 
+          {/* Perfect = single yellow center line */}
+          <Animated.View style={[styles.strikeLine, strikeStyle]} pointerEvents="none" />
+
           <Animated.View style={[styles.liquidWrap, liquidStyle]}>
-            {/* Soft glow bleeding above the surface into empty glass */}
             <LinearGradient
               colors={['rgba(255,176,32,0)', 'rgba(255,176,32,0.55)', 'rgba(255,240,120,0.9)']}
               locations={[0, 0.55, 1]}
@@ -122,7 +191,6 @@ function VerticalMeterComponent({
               style={styles.fill}
             />
 
-            {/* Glass sheen on the liquid */}
             <LinearGradient
               colors={['rgba(255,255,255,0.38)', 'rgba(255,255,255,0.08)', 'rgba(255,255,255,0)']}
               start={{ x: 0, y: 0.5 }}
@@ -141,7 +209,6 @@ function VerticalMeterComponent({
             </Animated.View>
           </Animated.View>
 
-          {/* Scale ticks — sit above liquid so they stay readable */}
           <View style={styles.ticks} pointerEvents="none">
             {ticks.map((t) => (
               <View
@@ -158,7 +225,6 @@ function VerticalMeterComponent({
             ))}
           </View>
 
-          {/* Inner glass highlight */}
           <View style={styles.glassShine} pointerEvents="none" />
         </View>
       </View>
@@ -216,6 +282,15 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     zIndex: 1,
+    overflow: 'hidden',
+  },
+  strikeLine: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    height: 4,
+    backgroundColor: EYE.perfect,
+    zIndex: 5,
   },
   liquidWrap: {
     position: 'absolute',
@@ -223,7 +298,7 @@ const styles = StyleSheet.create({
     right: 0,
     bottom: 0,
     overflow: 'visible',
-    zIndex: 2,
+    zIndex: 3,
   },
   fill: {
     position: 'absolute',

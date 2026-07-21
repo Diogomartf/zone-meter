@@ -13,7 +13,8 @@ function ramp(level: number, halfLife: number) {
 }
 
 function grind(level: number) {
-  return Math.log2(1 + Math.max(0, level - 1) * 0.15);
+  // Extremely slow long-term pressure
+  return Math.log2(1 + Math.max(0, level - 1) * 0.02);
 }
 
 /** Tiny seeded RNG for daily challenge reproducibility */
@@ -32,7 +33,7 @@ export type MakeRoundOptions = {
 
 /**
  * Infinite increasing difficulty.
- * Levels 1–10 are intentionally wide / hard to miss, then the grind starts.
+ * Levels 1–10 are intentionally wide / hard to miss, then a long slow grind.
  */
 export function makeRound(level: number, opts: MakeRoundOptions = {}): RoundConfig {
   const n = Math.max(1, level);
@@ -40,32 +41,38 @@ export function makeRound(level: number, opts: MakeRoundOptions = {}): RoundConf
   const easy = n <= 10;
   const easyT = easy ? (n - 1) / 9 : 1; // 0 at lvl1 → 1 at lvl10
 
-  // Difficulty ramps from level 11 onward so the easy stretch doesn't cliff
+  // Difficulty ramps from level 11 onward — very long half-lives, barely tightens for a long stretch
   const hardLevel = Math.max(1, n - 10);
-  const speedR = ramp(hardLevel, 16);
-  const zoneR = ramp(hardLevel, 18);
-  const placeR = ramp(hardLevel, 20);
+  const speedR = ramp(hardLevel, 90);
+  const zoneR = ramp(hardLevel, 100);
+  const placeR = ramp(hardLevel, 110);
   const g = grind(hardLevel);
 
   let fillMs: number;
   let zoneHalf: number;
 
   if (easy) {
-    // Huge hit windows early — ~48% of the meter at lvl1, still generous at lvl10
-    fillMs = Math.round(lerp(2100, 1550, easyT));
-    zoneHalf = lerp(0.24, 0.13, easyT);
+    // Slow fills — focus / timing, not reaction
+    // Compact bullseye early — ~24% of the meter at lvl1
+    fillMs = Math.round(lerp(4200, 3400, easyT));
+    zoneHalf = lerp(0.12, 0.08, easyT);
   } else {
-    // Pick up from the end of the easy stretch and tighten gradually
-    fillMs = Math.round(clamp(lerp(1550, 420, speedR) - g * 22, 240, 1600));
-    zoneHalf = clamp(lerp(0.13, 0.03, zoneR) - g * 0.0028, 0.012, 0.13);
+    // Pick up from the end of the easy stretch; stays deliberate even deep
+    fillMs = Math.round(clamp(lerp(3400, 2000, speedR) - g * 20, 1600, 3600));
+    zoneHalf = clamp(lerp(0.08, 0.035, zoneR) - g * 0.0008, 0.014, 0.08);
   }
+  // +15% fill velocity
+  fillMs = Math.round(fillMs / 1.15);
 
-  const perfectRatio = easy ? lerp(0.42, 0.34, easyT) : lerp(0.32, 0.16, ramp(n, 17));
-  const perfectHalf = clamp(zoneHalf * perfectRatio, 0.005, easy ? 0.09 : 0.04);
+  // Bullseye: Perfect (center) → Great → Nice (to markers / zoneHalf)
+  const perfectRatio = easy ? lerp(0.14, 0.12, easyT) : lerp(0.12, 0.09, ramp(n, 90));
+  const greatRatio = easy ? lerp(0.62, 0.58, easyT) : lerp(0.58, 0.52, ramp(n, 90));
+  const perfectHalf = clamp(zoneHalf * perfectRatio, 0.005, easy ? 0.032 : 0.02);
+  const greatHalf = clamp(zoneHalf * greatRatio, perfectHalf + 0.008, zoneHalf - 0.008);
 
   const edgePad = easy
     ? lerp(0.08, 0.12, easyT)
-    : clamp(lerp(0.12, 0.035, placeR) - g * 0.003, 0.02, 0.12);
+    : clamp(lerp(0.12, 0.055, placeR) - g * 0.0008, 0.03, 0.12);
   const min = zoneHalf + edgePad;
   const max = 1 - zoneHalf - edgePad * 0.7;
 
@@ -83,9 +90,9 @@ export function makeRound(level: number, opts: MakeRoundOptions = {}): RoundConf
     }
   }
 
-  // Moving / shrinking only after the easy stretch
-  const moving = !easy && n >= 12 && rand() < clamp(0.2 + (n - 12) * 0.02, 0.2, 0.7);
-  const shrinking = !easy && n >= 14 && rand() < clamp(0.15 + (n - 14) * 0.015, 0.15, 0.55);
+  // Moving / shrinking arrive much later and stay uncommon for a long time
+  const moving = !easy && n >= 28 && rand() < clamp(0.08 + (n - 28) * 0.004, 0.08, 0.4);
+  const shrinking = !easy && n >= 35 && rand() < clamp(0.06 + (n - 35) * 0.003, 0.06, 0.3);
 
   let targetEnd: number | undefined;
   if (moving) {
@@ -95,7 +102,7 @@ export function makeRound(level: number, opts: MakeRoundOptions = {}): RoundConf
     }
   }
 
-  const zoneHalfEnd = shrinking ? clamp(zoneHalf * lerp(0.72, 0.55, ramp(n, 20)), 0.01, zoneHalf) : undefined;
+  const zoneHalfEnd = shrinking ? clamp(zoneHalf * lerp(0.85, 0.7, ramp(n, 100)), 0.016, zoneHalf) : undefined;
 
   // Vary meter size for visual variety (still readable)
   const sizeRoll = rand();
@@ -115,6 +122,7 @@ export function makeRound(level: number, opts: MakeRoundOptions = {}): RoundConf
     targetEnd,
     zoneHalf,
     zoneHalfEnd,
+    greatHalf,
     perfectHalf,
     fillMs,
     moving,
@@ -133,5 +141,11 @@ export function zoneAt(round: RoundConfig, t: number) {
     round.shrinking && round.zoneHalfEnd != null
       ? lerp(round.zoneHalf, round.zoneHalfEnd, t)
       : round.zoneHalf;
-  return { target, zoneHalf, perfectHalf: round.perfectHalf };
+  const scale = round.zoneHalf > 0 ? zoneHalf / round.zoneHalf : 1;
+  return {
+    target,
+    zoneHalf,
+    greatHalf: round.greatHalf * scale,
+    perfectHalf: round.perfectHalf * scale,
+  };
 }

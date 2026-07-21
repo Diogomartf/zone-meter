@@ -7,11 +7,13 @@ export type RoundConfig = {
   target: number;
   /** Optional second target for moving zone */
   targetEnd?: number;
-  /** Half-width of the passable zone at start (0–1) */
+  /** Half-width of the outer Nice band (full passable zone) at start (0–1) */
   zoneHalf: number;
   /** Half-width at end of fill if shrinking */
   zoneHalfEnd?: number;
-  /** Perfect half-width (0–1) */
+  /** Half-width of the Great band (between Nice and Perfect) (0–1) */
+  greatHalf: number;
+  /** Half-width of the Perfect bullseye (0–1) */
   perfectHalf: number;
   /** Fill duration in ms */
   fillMs: number;

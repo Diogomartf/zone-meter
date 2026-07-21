@@ -80,9 +80,12 @@ export const gameHaptics = {
         await safe(() => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light));
         break;
       case 'Miss':
-        await safe(() => Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error));
-        await sleep(35);
+        // Soft-heavy thud — sad loss, not a sharp slap
         await safe(() => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy));
+        await sleep(90);
+        await safe(() => Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error));
+        await sleep(70);
+        await safe(() => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium));
         break;
     }
   },

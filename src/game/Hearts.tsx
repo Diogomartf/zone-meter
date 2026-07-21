@@ -34,19 +34,20 @@ function Heart({ filled }: { filled: boolean }) {
       opacity.value = 1;
       rotate.value = 0;
 
+      // Sad snap — swell, then wilt away
       scale.value = withSequence(
-        withTiming(1.55, { duration: 100, easing: Easing.out(Easing.cubic) }),
-        withTiming(0, { duration: 240, easing: Easing.in(Easing.cubic) }),
+        withTiming(1.7, { duration: 120, easing: Easing.out(Easing.cubic) }),
+        withTiming(0, { duration: 320, easing: Easing.in(Easing.cubic) }),
       );
       opacity.value = withSequence(
-        withTiming(1, { duration: 100 }),
-        withTiming(0, { duration: 200 }, (finished) => {
+        withTiming(1, { duration: 120 }),
+        withTiming(0, { duration: 280 }, (finished) => {
           if (finished) runOnJS(setPopping)(false);
         }),
       );
       rotate.value = withSequence(
-        withTiming(-14, { duration: 100, easing: Easing.out(Easing.quad) }),
-        withTiming(22, { duration: 240, easing: Easing.in(Easing.quad) }),
+        withTiming(-18, { duration: 120, easing: Easing.out(Easing.quad) }),
+        withTiming(32, { duration: 300, easing: Easing.in(Easing.quad) }),
       );
     }
 
