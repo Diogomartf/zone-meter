@@ -1,4 +1,5 @@
 import { Image } from "expo-image";
+import * as Sharing from "expo-sharing";
 import { SymbolView } from "expo-symbols";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
@@ -22,6 +23,7 @@ import Animated, {
   withTiming,
 } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { captureRef } from "react-native-view-shot";
 
 import { GameColors, GameFonts } from "@/constants/gameTheme";
 import { CountdownBurst } from "@/game/CountdownBurst";
@@ -186,7 +188,9 @@ export function GameScreen() {
   const [perfectBurstKey, setPerfectBurstKey] = useState(0);
   const [missBurstKey, setMissBurstKey] = useState(0);
   const feedbackSlotRef = useRef<FeedbackSlot | null>(null);
+  const shareRef = useRef<View>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [capturingShare, setCapturingShare] = useState(false);
 
   const fill = useSharedValue(0);
   const zoneTarget = useSharedValue(round.target);
@@ -203,6 +207,7 @@ export function GameScreen() {
   const feedbackScale = useSharedValue(0.7);
   const comboPulse = useSharedValue(1);
   const comboLabelOpacity = useSharedValue(0);
+  const newBestPulse = useSharedValue(1);
   const isFilling = useSharedValue(0);
 
   const syncZoneMotion = useCallback(
@@ -234,6 +239,10 @@ export function GameScreen() {
   const scoreRef = useRef(0);
   const livesRef = useRef(STARTING_LIVES);
   const comboRef = useRef(0);
+  /** Best score at run start — used to detect a live / final new high. */
+  const runBestBaselineRef = useRef(0);
+  /** Fire the mid-run "NEW BEST" cue only once per run. */
+  const newBestAnnouncedRef = useRef(false);
   /** "COMBO" label only once per streak, then multiplier alone */
   const comboIntroShownRef = useRef(false);
   const lockingTap = useRef(false);
@@ -372,6 +381,17 @@ export function GameScreen() {
     }
   };
 
+  const announceNewBest = useCallback(() => {
+    if (newBestAnnouncedRef.current) return;
+    newBestAnnouncedRef.current = true;
+    setIsNewBest(true);
+    newBestPulse.value = withSequence(
+      withTiming(1.22, { duration: 140, easing: Easing.out(Easing.cubic) }),
+      withTiming(1, { duration: 220, easing: Easing.inOut(Easing.quad) }),
+    );
+    void gameHaptics.result("Great");
+  }, [newBestPulse]);
+
   const endRun = useCallback(
     async (finalScore: number, session: SessionStats) => {
       const next = await commitRunResult({
@@ -382,7 +402,10 @@ export function GameScreen() {
         isDaily: dailyMode,
       });
       setPersist(next);
-      setIsNewBest(finalScore > 0 && finalScore >= next.highScore);
+      const beatBest =
+        finalScore > 0 && finalScore >= runBestBaselineRef.current;
+      setIsNewBest(beatBest);
+      if (beatBest) newBestAnnouncedRef.current = true;
       setPhase("gameover");
       phaseRef.current = "gameover";
     },
@@ -447,6 +470,9 @@ export function GameScreen() {
         play(result.result === "perfect" ? "perfect" : "zone");
         setScore((sc) => sc + result.points);
         scoreRef.current += result.points;
+        if (scoreRef.current > runBestBaselineRef.current) {
+          announceNewBest();
+        }
         setPhase("result");
         phaseRef.current = "result";
 
@@ -466,7 +492,7 @@ export function GameScreen() {
         return next;
       });
     },
-    [endRun, isFilling, play],
+    [announceNewBest, endRun, isFilling, play],
   );
 
   const startFill = useCallback(() => {
@@ -667,6 +693,13 @@ export function GameScreen() {
     comboRef.current = 0;
     comboIntroShownRef.current = false;
     comboLabelOpacity.value = 0;
+    runBestBaselineRef.current = daily
+      ? persist?.dailyBest.date === todayKey()
+        ? persist.dailyBest.score
+        : 0
+      : (persist?.highScore ?? 0);
+    newBestAnnouncedRef.current = false;
+    newBestPulse.value = 1;
     setStats(emptyStats());
     setIsNewBest(false);
     setFeedback(null);
@@ -891,9 +924,50 @@ export function GameScreen() {
     marginBottom: comboLabelOpacity.value * 2,
     overflow: "hidden" as const,
   }));
+  const newBestStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: newBestPulse.value }],
+  }));
 
   const accuracy =
     stats.attempts > 0 ? Math.round((stats.hits / stats.attempts) * 100) : 0;
+
+  const persistedBest = dailyMode
+    ? persist?.dailyBest.date === todayKey()
+      ? persist.dailyBest.score
+      : 0
+    : (persist?.highScore ?? 0);
+  const displayedBest =
+    isNewBest && phase !== "ready" ? Math.max(score, persistedBest) : persistedBest;
+
+  const shareScoreImage = useCallback(async () => {
+    if (capturingShare || !shareRef.current) return;
+    setCapturingShare(true);
+    try {
+      // Wait for React to commit + paint without Share/Retry/settings chrome.
+      await new Promise<void>((resolve) => setTimeout(resolve, 50));
+      const uri = await captureRef(shareRef, {
+        format: "png",
+        quality: 1,
+        result: "tmpfile",
+      });
+      if (!(await Sharing.isAvailableAsync())) {
+        Alert.alert(
+          "Sharing unavailable",
+          "Sharing is not available on this device.",
+        );
+        return;
+      }
+      await Sharing.shareAsync(uri, {
+        mimeType: "image/png",
+        dialogTitle: "Share your score",
+        UTI: "public.png",
+      });
+    } catch {
+      Alert.alert("Share failed", "Could not create the score image.");
+    } finally {
+      setCapturingShare(false);
+    }
+  }, [capturingShare]);
 
   const hitEnabled = phase === "filling" && !settingsOpen;
   const meterScale = round.meterScale;
@@ -905,7 +979,7 @@ export function GameScreen() {
   );
   const menuBottom = meterBottom + meterWrapH * 0.42;
   return (
-    <View style={styles.root}>
+    <View ref={shareRef} style={styles.root} collapsable={false}>
       <View style={styles.backdrop} pointerEvents="none">
         <Image
           source={GAME_BG}
@@ -961,18 +1035,21 @@ export function GameScreen() {
               />
             </View>
 
-            <View style={styles.bestPill} pointerEvents="none">
-              <Text style={styles.bestLabel}>
-                {dailyMode ? "DAILY" : "BEST"}
+            <View
+              style={[styles.bestPill, isNewBest && styles.bestPillHot]}
+              pointerEvents="none"
+            >
+              <Text
+                style={[styles.bestLabel, isNewBest && styles.bestLabelHot]}
+              >
+                {isNewBest ? "NEW BEST" : dailyMode ? "DAILY" : "BEST"}
               </Text>
-              <Text style={styles.bestValue}>
-                {dailyMode
-                  ? persist?.dailyBest.date === todayKey()
-                    ? persist.dailyBest.score
-                    : 0
-                  : (persist?.highScore ?? 0)}
+              <Text
+                style={[styles.bestValue, isNewBest && styles.bestValueHot]}
+              >
+                {displayedBest}
               </Text>
-              {!dailyMode ? (
+              {!dailyMode && !isNewBest ? (
                 <Text style={styles.bestSub}>
                   LVL {persist?.bestLevel ?? 0}
                 </Text>
@@ -988,7 +1065,9 @@ export function GameScreen() {
                 <Hearts lives={lives} max={STARTING_LIVES} />
               </View>
             ) : null}
-            <Text style={styles.bigScore}>{score}</Text>
+            <Text style={[styles.bigScore, isNewBest && styles.bigScoreHot]}>
+              {score}
+            </Text>
             {phase === "gameover" ? (
               <View style={styles.runStats}>
                 <View style={styles.runStat}>
@@ -1007,7 +1086,14 @@ export function GameScreen() {
                 </View>
               </View>
             ) : (
-              <Text style={styles.metaLine}>LVL {round.level}</Text>
+              <>
+                <Text style={styles.metaLine}>LVL {round.level}</Text>
+                {isNewBest ? (
+                  <Animated.Text style={[styles.newBestTag, newBestStyle]}>
+                    NEW BEST
+                  </Animated.Text>
+                ) : null}
+              </>
             )}
           </View>
         ) : null}
@@ -1129,17 +1215,28 @@ export function GameScreen() {
             >
               {isNewBest ? "NEW BEST!" : "GAME OVER"}
             </Text>
-            <GameCta
-              label="RETRY"
-              face={isNewBest ? GameColors.bubble : GameColors.playBlue}
-              depth={
-                isNewBest ? GameColors.bubbleDark : GameColors.playBlueDark
-              }
-              onPress={() => {
-                void gameHaptics.next();
-                startRun(dailyMode);
-              }}
-            />
+            {!capturingShare ? (
+              <View style={styles.gameOverActions} pointerEvents="box-none">
+                <GameCta
+                  label="SHARE"
+                  face={GameColors.bubble}
+                  depth={GameColors.bubbleDark}
+                  onPress={() => {
+                    void gameHaptics.next();
+                    void shareScoreImage();
+                  }}
+                />
+                <GameCta
+                  label="RETRY"
+                  face={GameColors.xpGold}
+                  depth="#D97706"
+                  onPress={() => {
+                    void gameHaptics.next();
+                    startRun(dailyMode);
+                  }}
+                />
+              </View>
+            ) : null}
           </View>
         ) : null}
 
@@ -1157,7 +1254,7 @@ export function GameScreen() {
             />
             <GameCta
               label="DAILY"
-              subtitle="ONE RUN · SHARED SEED"
+              subtitle="Same sequence for everyone · updates daily"
               face={GameColors.bubble}
               depth={GameColors.bubbleDark}
               onPress={() => startRun(true)}
@@ -1166,9 +1263,14 @@ export function GameScreen() {
         ) : null}
 
         <Pressable
-          style={[styles.settingsBtn, { bottom: insets.bottom + 16 }]}
+          style={[
+            styles.settingsBtn,
+            { bottom: insets.bottom + 16 },
+            capturingShare && styles.hidden,
+          ]}
           onPress={openSettings}
           hitSlop={10}
+          pointerEvents={capturingShare ? "none" : "auto"}
           accessibilityLabel={
             phase !== "ready" && phase !== "gameover" ? "Pause" : "Settings"
           }
@@ -1291,16 +1393,27 @@ const styles = StyleSheet.create({
     minWidth: 64,
     flexShrink: 0,
   },
+  bestPillHot: {
+    backgroundColor: GameColors.lemon,
+  },
   bestLabel: {
     fontFamily: GameFonts.soft,
     fontSize: 12,
     color: GameColors.panelInk,
+  },
+  bestLabelHot: {
+    fontFamily: GameFonts.body,
+    color: GameColors.ink,
+    letterSpacing: 0.4,
   },
   bestValue: {
     fontFamily: GameFonts.body,
     fontSize: 20,
     lineHeight: 24,
     color: GameColors.ink,
+  },
+  bestValueHot: {
+    fontFamily: GameFonts.display,
   },
   bestSub: {
     fontFamily: GameFonts.soft,
@@ -1322,11 +1435,28 @@ const styles = StyleSheet.create({
     textShadowOffset: { width: 0, height: 3 },
     textShadowRadius: 0,
   },
+  bigScoreHot: {
+    color: GameColors.lemon,
+    textShadowColor: GameColors.ink,
+    textShadowOffset: { width: 0, height: 3 },
+    textShadowRadius: 0,
+  },
   metaLine: {
     fontFamily: GameFonts.display,
     fontSize: 22,
     lineHeight: 26,
     color: GameColors.ink,
+  },
+  newBestTag: {
+    marginTop: 4,
+    fontFamily: GameFonts.display,
+    fontSize: 18,
+    lineHeight: 22,
+    letterSpacing: 1,
+    color: GameColors.lemon,
+    textShadowColor: GameColors.ink,
+    textShadowOffset: { width: 0, height: 2 },
+    textShadowRadius: 0,
   },
   runStats: {
     marginTop: 8,
@@ -1409,6 +1539,11 @@ const styles = StyleSheet.create({
     zIndex: 40,
     gap: 18,
     paddingHorizontal: 24,
+  },
+  gameOverActions: {
+    width: "100%",
+    alignItems: "center",
+    gap: 12,
   },
   gameOverTitle: {
     fontFamily: GameFonts.display,
