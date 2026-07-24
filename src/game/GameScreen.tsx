@@ -270,16 +270,22 @@ export function GameScreen() {
     syncZoneMotion(round);
   }, [round, syncZoneMotion]);
 
-  // Keep the painted zone locked to fill progress (same lerp as zoneAt / scoreFill)
+  // Keep the painted zone locked to fill progress (same lerp as zoneAt / scoreFill).
+  // Skip writes when the zone is static — fill still drives zone-enter haptics below.
   useAnimatedReaction(
     () => fill.value,
     (t) => {
-      zoneTarget.value = zoneMoves.value
-        ? zoneFrom.value + (zoneTo.value - zoneFrom.value) * t
-        : zoneFrom.value;
-      zoneHalf.value = zoneShrinks.value
-        ? halfFrom.value + (halfTo.value - halfFrom.value) * t
-        : halfFrom.value;
+      const moves = zoneMoves.value;
+      const shrinks = zoneShrinks.value;
+      if (!moves && !shrinks) return;
+      if (moves) {
+        zoneTarget.value =
+          zoneFrom.value + (zoneTo.value - zoneFrom.value) * t;
+      }
+      if (shrinks) {
+        zoneHalf.value =
+          halfFrom.value + (halfTo.value - halfFrom.value) * t;
+      }
     },
     [
       fill,
@@ -1051,6 +1057,7 @@ export function GameScreen() {
             }
             skin={skin}
             scale={meterScale}
+            active={phase === "filling"}
           />
         </Animated.View>
       </View>

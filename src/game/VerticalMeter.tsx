@@ -2,6 +2,7 @@ import { LinearGradient } from "expo-linear-gradient";
 import { memo, useEffect, useMemo } from "react";
 import { StyleSheet, View } from "react-native";
 import Animated, {
+  cancelAnimation,
   Easing,
   useAnimatedStyle,
   useSharedValue,
@@ -24,11 +25,15 @@ type Props = {
   skin: SkinDef;
   /** Visual scale of the meter tube */
   scale?: number;
+  /** Drive liquid surface wobble only while filling */
+  active?: boolean;
 };
 
 const BASE_H = 340;
 const BASE_W = 100;
 const TICK_COUNT = 7;
+const MIN_LIQUID_PX = 14;
+const MIN_ZONE_PX = 12;
 
 /** Glossy toy bullseye — Nice, red Great, yellow Perfect line */
 const EYE = {
@@ -48,11 +53,12 @@ function VerticalMeterComponent({
   greatRatio,
   skin,
   scale = 1,
+  active = false,
 }: Props) {
   const meterH = BASE_H * scale;
   const meterW = BASE_W * scale;
   const innerH = meterH - 20;
-  const wobble = useSharedValue(0);
+  const wobble = useSharedValue(0.5);
 
   const pRatio = Math.min(Math.max(perfectRatio, 0.06), 0.28);
   const gRatio = Math.min(Math.max(greatRatio, pRatio * 1.8), 0.5);
@@ -107,12 +113,17 @@ function VerticalMeterComponent({
   }, [gRatio]);
 
   useEffect(() => {
-    wobble.value = withRepeat(
-      withTiming(1, { duration: 700, easing: Easing.inOut(Easing.sin) }),
-      -1,
-      true,
-    );
-  }, [wobble]);
+    if (active) {
+      wobble.value = withRepeat(
+        withTiming(1, { duration: 700, easing: Easing.inOut(Easing.sin) }),
+        -1,
+        true,
+      );
+      return;
+    }
+    cancelAnimation(wobble);
+    wobble.value = withTiming(0.5, { duration: 180 });
+  }, [active, wobble]);
 
   const ticks = useMemo(
     () =>
@@ -120,25 +131,32 @@ function VerticalMeterComponent({
     [],
   );
 
-  const liquidStyle = useAnimatedStyle(() => ({
-    height: Math.max(14, fill.value * innerH),
-  }));
+  // Fixed-height liquid slides up via translateY — avoids layout thrash on fill.
+  const liquidStyle = useAnimatedStyle(() => {
+    const t = Math.max(MIN_LIQUID_PX / innerH, fill.value);
+    return {
+      transform: [{ translateY: (1 - t) * innerH }],
+    };
+  });
 
   const surfaceStyle = useAnimatedStyle(() => ({
     transform: [{ translateY: (wobble.value - 0.5) * 2.5 }],
   }));
 
-  // Markers = full Nice window (zoneHalf)
+  // Full-height zone band scaled + translated — no bottom/height layout updates.
   const zoneStyle = useAnimatedStyle(() => {
-    const half = zoneHalf.value;
+    const band = Math.max(MIN_ZONE_PX / innerH, zoneHalf.value * 2);
+    // Applied right-to-left: scale around center, then translate into place.
     return {
-      bottom: (zoneTarget.value - half) * innerH,
-      height: Math.max(12, half * 2 * innerH),
+      transform: [
+        { translateY: (0.5 - zoneTarget.value) * innerH },
+        { scaleY: band },
+      ],
     };
   });
 
   const strikeStyle = useAnimatedStyle(() => ({
-    bottom: zoneTarget.value * innerH - 5,
+    transform: [{ translateY: 5 - zoneTarget.value * innerH }],
     opacity: 0.95,
   }));
 
@@ -168,38 +186,14 @@ function VerticalMeterComponent({
       >
         <View style={styles.shellLip} />
         <View style={[styles.glass, { borderRadius: 18 * scale }]}>
-          {/* Glossy toy bullseye */}
-          <Animated.View style={[styles.zoneWrap, zoneStyle]}>
+          {/* Glossy toy bullseye — single gradient (depth/sheen baked into colors) */}
+          <Animated.View style={[styles.zoneWrap, { height: innerH }, zoneStyle]}>
             <LinearGradient
               colors={eyeGradient.colors}
               locations={eyeGradient.locations}
               style={StyleSheet.absoluteFill}
             />
-            {/* Rounded plastic depth */}
-            <LinearGradient
-              colors={[
-                "rgba(0,0,0,0.28)",
-                "rgba(0,0,0,0.06)",
-                "rgba(255,255,255,0.14)",
-                "rgba(0,0,0,0.06)",
-                "rgba(0,0,0,0.28)",
-              ]}
-              locations={[0, 0.18, 0.5, 0.82, 1]}
-              style={StyleSheet.absoluteFill}
-              pointerEvents="none"
-            />
-            {/* Specular sheen */}
-            <LinearGradient
-              colors={[
-                "rgba(255,255,255,0.62)",
-                "rgba(255,255,255,0.16)",
-                "rgba(255,255,255,0)",
-              ]}
-              start={{ x: 0, y: 0.5 }}
-              end={{ x: 1, y: 0.5 }}
-              style={styles.zoneSheen}
-              pointerEvents="none"
-            />
+            <View style={styles.zoneSheen} pointerEvents="none" />
           </Animated.View>
 
           {/* Perfect = soft yellow center line */}
@@ -220,7 +214,9 @@ function VerticalMeterComponent({
             />
           </Animated.View>
 
-          <Animated.View style={[styles.liquidWrap, liquidStyle]}>
+          <Animated.View
+            style={[styles.liquidWrap, { height: innerH }, liquidStyle]}
+          >
             <LinearGradient
               colors={[
                 "rgba(255,176,32,0)",
@@ -238,17 +234,7 @@ function VerticalMeterComponent({
               style={styles.fill}
             />
 
-            <LinearGradient
-              colors={[
-                "rgba(255,255,255,0.38)",
-                "rgba(255,255,255,0.08)",
-                "rgba(255,255,255,0)",
-              ]}
-              start={{ x: 0, y: 0.5 }}
-              end={{ x: 1, y: 0.5 }}
-              style={styles.liquidSheen}
-              pointerEvents="none"
-            />
+            <View style={styles.liquidSheen} pointerEvents="none" />
 
             <Animated.View style={[styles.surface, surfaceStyle]}>
               <LinearGradient
@@ -332,21 +318,25 @@ const styles = StyleSheet.create({
     position: "absolute",
     left: 0,
     right: 0,
+    bottom: 0,
     zIndex: 1,
     overflow: "hidden",
     borderRadius: 2,
   },
+  /** Flat specular strip — cheaper than a LinearGradient layer */
   zoneSheen: {
     position: "absolute",
     left: 0,
     top: 0,
     bottom: 0,
     width: "48%",
+    backgroundColor: "rgba(255,255,255,0.22)",
   },
   strikeLine: {
     position: "absolute",
     left: 0,
     right: 0,
+    bottom: 0,
     height: 10,
     zIndex: 5,
     overflow: "hidden",
@@ -377,13 +367,14 @@ const styles = StyleSheet.create({
     top: 0,
     bottom: 0,
     width: "42%",
+    backgroundColor: "rgba(255,255,255,0.16)",
   },
   surfaceGlow: {
     position: "absolute",
     left: -2,
     right: -2,
-    top: -28,
-    height: 36,
+    top: -20,
+    height: 25,
   },
   surface: {
     position: "absolute",
