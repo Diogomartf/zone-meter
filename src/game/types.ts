@@ -58,9 +58,12 @@ export type PersistState = {
   unlockedSkins: SkinId[];
   equippedSkin: SkinId;
   bestComboAllTime: number;
-  /** Deepest level reached in any run */
+  /** Deepest level reached in a normal (non-daily) run */
   bestLevel: number;
-  dailyBest: { date: string; score: number };
+  /** Best daily score for a calendar day (today when date matches) */
+  dailyBest: { date: string; score: number; level: number };
+  /** Best daily score ever, with the day it was set */
+  dailyRecord: { date: string; score: number; level: number };
   soundMuted: boolean;
   /** Vibration / haptic feedback during play */
   hapticsEnabled: boolean;

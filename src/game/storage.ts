@@ -5,6 +5,10 @@ import type { PersistState, SkinId } from '@/game/types';
 
 const KEY = 'zone-meter:persist-v1';
 
+type DailyScore = PersistState['dailyBest'];
+
+const EMPTY_DAILY: DailyScore = { date: '', score: 0, level: 0 };
+
 const DEFAULT_STATE: PersistState = {
   highScore: 0,
   coins: 0,
@@ -12,7 +16,8 @@ const DEFAULT_STATE: PersistState = {
   equippedSkin: DEFAULT_SKIN,
   bestComboAllTime: 0,
   bestLevel: 0,
-  dailyBest: { date: '', score: 0 },
+  dailyBest: { ...EMPTY_DAILY },
+  dailyRecord: { ...EMPTY_DAILY },
   soundMuted: false,
   hapticsEnabled: true,
 };
@@ -21,11 +26,33 @@ function todayKey() {
   return new Date().toISOString().slice(0, 10);
 }
 
+function parseDailyScore(value: Partial<DailyScore> | undefined): DailyScore {
+  if (!value) return { ...EMPTY_DAILY };
+  return {
+    date: value.date ?? '',
+    score: Number(value.score) || 0,
+    level: Number(value.level) || 0,
+  };
+}
+
+function betterDaily(a: DailyScore, b: DailyScore): DailyScore {
+  if (b.score > a.score) return b;
+  if (b.score === a.score && b.level > a.level) return b;
+  return a;
+}
+
 export async function loadPersist(): Promise<PersistState> {
   try {
     const raw = await AsyncStorage.getItem(KEY);
     if (!raw) return { ...DEFAULT_STATE, unlockedSkins: [...DEFAULT_STATE.unlockedSkins] };
     const parsed = JSON.parse(raw) as Partial<PersistState>;
+    const dailyBest = parseDailyScore(parsed.dailyBest);
+    // Migrate older saves that only had dailyBest
+    const dailyRecord = parsed.dailyRecord
+      ? parseDailyScore(parsed.dailyRecord)
+      : dailyBest.score > 0
+        ? { ...dailyBest }
+        : { ...EMPTY_DAILY };
     return {
       ...DEFAULT_STATE,
       ...parsed,
@@ -33,9 +60,8 @@ export async function loadPersist(): Promise<PersistState> {
         ? (parsed.unlockedSkins as SkinId[])
         : ['toxic'],
       equippedSkin: parsed.equippedSkin ?? DEFAULT_SKIN,
-      dailyBest: parsed.dailyBest
-        ? { date: parsed.dailyBest.date ?? '', score: Number(parsed.dailyBest.score) || 0 }
-        : { date: '', score: 0 },
+      dailyBest,
+      dailyRecord: betterDaily(dailyRecord, dailyBest),
       soundMuted: Boolean(parsed.soundMuted),
       hapticsEnabled: parsed.hapticsEnabled !== false,
       bestLevel: Number.isFinite(parsed.bestLevel) ? Number(parsed.bestLevel) : 0,
@@ -80,23 +106,39 @@ export async function commitRunResult(input: {
   isDaily: boolean;
 }): Promise<PersistState> {
   const prev = await loadPersist();
+  const today = todayKey();
+  const sameDailyDay = prev.dailyBest.date === today;
+
+  let dailyBest = prev.dailyBest;
+  let dailyRecord = prev.dailyRecord;
+
+  if (input.isDaily) {
+    dailyBest = {
+      date: today,
+      score: sameDailyDay
+        ? Math.max(prev.dailyBest.score, input.score)
+        : input.score,
+      level: sameDailyDay
+        ? Math.max(prev.dailyBest.level, input.bestLevel)
+        : input.bestLevel,
+    };
+    dailyRecord = betterDaily(prev.dailyRecord, dailyBest);
+  }
+
   const next: PersistState = {
     ...prev,
-    highScore: Math.max(prev.highScore, input.score),
     // Coins kept in save data but not surfaced in UI for now
     coins: prev.coins + input.coinsEarned,
     bestComboAllTime: Math.max(prev.bestComboAllTime, input.bestCombo),
-    bestLevel: Math.max(prev.bestLevel, input.bestLevel),
-    dailyBest:
-      input.isDaily
-        ? {
-            date: todayKey(),
-            score:
-              prev.dailyBest.date === todayKey()
-                ? Math.max(prev.dailyBest.score, input.score)
-                : input.score,
-          }
-        : prev.dailyBest,
+    // Normal and daily bests are tracked separately
+    highScore: input.isDaily
+      ? prev.highScore
+      : Math.max(prev.highScore, input.score),
+    bestLevel: input.isDaily
+      ? prev.bestLevel
+      : Math.max(prev.bestLevel, input.bestLevel),
+    dailyBest,
+    dailyRecord,
   };
   await savePersist(next);
   return next;

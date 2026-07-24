@@ -38,7 +38,7 @@ import {
   scoreFill,
   STARTING_LIVES,
 } from "@/game/scoring";
-import { SettingsSheet } from "@/game/SettingsSheet";
+import { MenuSheet } from "@/game/MenuSheet";
 import { DEFAULT_SKIN, SKINS } from "@/game/skins";
 import {
   clearPersist,
@@ -189,7 +189,7 @@ export function GameScreen() {
   const [missBurstKey, setMissBurstKey] = useState(0);
   const feedbackSlotRef = useRef<FeedbackSlot | null>(null);
   const shareRef = useRef<View>(null);
-  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
   const [capturingShare, setCapturingShare] = useState(false);
 
   const fill = useSharedValue(0);
@@ -250,8 +250,8 @@ export function GameScreen() {
   const autoTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const countTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const advanceRef = useRef<() => void>(() => {});
-  /** True while settings sheet is open — game must not progress. */
-  const settingsPausedRef = useRef(false);
+  /** True while menu sheet is open — game must not progress. */
+  const menuPausedRef = useRef(false);
   const countdownRef = useRef(3);
   const pendingTimerRef = useRef<"countdown" | "startFill" | "advance" | null>(
     null,
@@ -457,7 +457,7 @@ export function GameScreen() {
             pendingTimerRef.current = "advance";
             autoTimer.current = setTimeout(() => {
               pendingTimerRef.current = null;
-              if (settingsPausedRef.current) {
+              if (menuPausedRef.current) {
                 pauseResumeRef.current = { kind: "advance" };
                 return;
               }
@@ -481,7 +481,7 @@ export function GameScreen() {
         autoTimer.current = setTimeout(
           () => {
             pendingTimerRef.current = null;
-            if (settingsPausedRef.current) {
+            if (menuPausedRef.current) {
               pauseResumeRef.current = { kind: "advance" };
               return;
             }
@@ -496,7 +496,7 @@ export function GameScreen() {
   );
 
   const startFill = useCallback(() => {
-    if (settingsPausedRef.current) {
+    if (menuPausedRef.current) {
       pauseResumeRef.current = { kind: "startFill" };
       return;
     }
@@ -534,7 +534,7 @@ export function GameScreen() {
         pendingTimerRef.current = "startFill";
         countTimer.current = setTimeout(() => {
           pendingTimerRef.current = null;
-          if (settingsPausedRef.current) {
+          if (menuPausedRef.current) {
             pauseResumeRef.current = { kind: "startFill" };
             return;
           }
@@ -546,7 +546,7 @@ export function GameScreen() {
       pendingTimerRef.current = "countdown";
       countTimer.current = setTimeout(() => {
         pendingTimerRef.current = null;
-        if (settingsPausedRef.current) {
+        if (menuPausedRef.current) {
           pauseResumeRef.current = { kind: "countdown", countAt: current };
           return;
         }
@@ -594,7 +594,7 @@ export function GameScreen() {
 
       // Later levels: land the meter, pause so the zone is readable, then fill
       const startAfterReadPause = () => {
-        if (settingsPausedRef.current) {
+        if (menuPausedRef.current) {
           pauseResumeRef.current = { kind: "startFill" };
           return;
         }
@@ -602,7 +602,7 @@ export function GameScreen() {
         pendingTimerRef.current = "startFill";
         countTimer.current = setTimeout(() => {
           pendingTimerRef.current = null;
-          if (settingsPausedRef.current) {
+          if (menuPausedRef.current) {
             pauseResumeRef.current = { kind: "startFill" };
             return;
           }
@@ -636,7 +636,7 @@ export function GameScreen() {
   }, [beginRound]);
 
   const onMeterSlidOut = useCallback(() => {
-    if (settingsPausedRef.current) {
+    if (menuPausedRef.current) {
       pauseResumeRef.current = { kind: "advance" };
       return;
     }
@@ -677,10 +677,10 @@ export function GameScreen() {
   const startRun = (daily: boolean) => {
     if (countTimer.current) clearTimeout(countTimer.current);
     if (autoTimer.current) clearTimeout(autoTimer.current);
-    settingsPausedRef.current = false;
+    menuPausedRef.current = false;
     pauseResumeRef.current = null;
     pendingTimerRef.current = null;
-    setSettingsOpen(false);
+    setMenuOpen(false);
     cancelAnimation(meterX);
     cancelAnimation(fill);
     setDailyMode(daily);
@@ -727,9 +727,9 @@ export function GameScreen() {
     [fill, finishRound, isFilling],
   );
 
-  const openSettings = useCallback(() => {
+  const openMenu = useCallback(() => {
     void gameHaptics.next();
-    settingsPausedRef.current = true;
+    menuPausedRef.current = true;
 
     const p = phaseRef.current;
     if (p === "filling") {
@@ -776,12 +776,12 @@ export function GameScreen() {
       meterX.value = meterX.value;
     }
 
-    setSettingsOpen(true);
+    setMenuOpen(true);
   }, [fill, isFilling, meterX]);
 
-  const closeSettings = useCallback(() => {
-    setSettingsOpen(false);
-    settingsPausedRef.current = false;
+  const closeMenu = useCallback(() => {
+    setMenuOpen(false);
+    menuPausedRef.current = false;
     const resume = pauseResumeRef.current;
     pauseResumeRef.current = null;
     if (!resume) return;
@@ -818,9 +818,44 @@ export function GameScreen() {
     if (enabled) void gameHaptics.next();
   };
 
-  const restartFromSettings = () => {
+  const goBackFromMenu = () => {
     void gameHaptics.next();
-    startRun(dailyMode);
+    if (countTimer.current) clearTimeout(countTimer.current);
+    if (autoTimer.current) clearTimeout(autoTimer.current);
+    menuPausedRef.current = false;
+    pauseResumeRef.current = null;
+    pendingTimerRef.current = null;
+    setMenuOpen(false);
+    cancelAnimation(meterX);
+    cancelAnimation(fill);
+    isFilling.value = 0;
+    fill.value = 0;
+    setDailyMode(false);
+    rngRef.current = Math.random;
+    setScore(0);
+    scoreRef.current = 0;
+    setLives(STARTING_LIVES);
+    livesRef.current = STARTING_LIVES;
+    setCombo(0);
+    comboRef.current = 0;
+    comboIntroShownRef.current = false;
+    comboLabelOpacity.value = 0;
+    setStats(emptyStats());
+    setIsNewBest(false);
+    setFeedback(null);
+    feedbackOpacity.value = 0;
+    setOutcome(null);
+    const idle = makeRound(1);
+    setRound(idle);
+    roundRef.current = idle;
+    syncZoneMotion(idle);
+    setPhase("ready");
+    phaseRef.current = "ready";
+  };
+
+  const startModeFromMenu = (daily: boolean) => {
+    void gameHaptics.next();
+    startRun(daily);
   };
 
   const sendFeedback = async () => {
@@ -847,10 +882,10 @@ export function GameScreen() {
 
     if (countTimer.current) clearTimeout(countTimer.current);
     if (autoTimer.current) clearTimeout(autoTimer.current);
-    settingsPausedRef.current = false;
+    menuPausedRef.current = false;
     pauseResumeRef.current = null;
     pendingTimerRef.current = null;
-    setSettingsOpen(false);
+    setMenuOpen(false);
     cancelAnimation(meterX);
     cancelAnimation(fill);
     isFilling.value = 0;
@@ -879,7 +914,7 @@ export function GameScreen() {
   };
 
   const onTap = () => {
-    if (settingsOpen || lockingTap.current) return;
+    if (menuOpen || lockingTap.current) return;
     const p = phaseRef.current;
     if (p === "countdown" || p === "ready" || p === "result") return;
 
@@ -969,7 +1004,7 @@ export function GameScreen() {
     }
   }, [capturingShare]);
 
-  const hitEnabled = phase === "filling" && !settingsOpen;
+  const hitEnabled = phase === "filling" && !menuOpen;
   const meterScale = round.meterScale;
   const meterWrapH = METER_BASE_H * meterScale + METER_WRAP_EXTRA;
   // Pin meter base to the yellow pad in the background art
@@ -1049,9 +1084,14 @@ export function GameScreen() {
               >
                 {displayedBest}
               </Text>
-              {!dailyMode && !isNewBest ? (
+              {!isNewBest ? (
                 <Text style={styles.bestSub}>
-                  LVL {persist?.bestLevel ?? 0}
+                  LVL{" "}
+                  {dailyMode
+                    ? persist?.dailyBest.date === todayKey()
+                      ? (persist.dailyBest.level ?? 0)
+                      : 0
+                    : (persist?.bestLevel ?? 0)}
                 </Text>
               ) : null}
             </View>
@@ -1206,6 +1246,15 @@ export function GameScreen() {
 
         {phase === "gameover" ? (
           <View style={styles.gameOverPanel} pointerEvents="box-none">
+            {dailyMode ? (
+              <Text style={styles.dailyShareDate} pointerEvents="none">
+                DAILY ·{" "}
+                {new Date(todayKey() + "T12:00:00").toLocaleDateString(
+                  undefined,
+                  { month: "short", day: "numeric", year: "numeric" },
+                )}
+              </Text>
+            ) : null}
             <Text
               style={[
                 styles.gameOverTitle,
@@ -1264,28 +1313,22 @@ export function GameScreen() {
 
         <Pressable
           style={[
-            styles.settingsBtn,
+            styles.menuBtn,
             { bottom: insets.bottom + 16 },
             capturingShare && styles.hidden,
           ]}
-          onPress={openSettings}
+          onPress={openMenu}
           hitSlop={10}
           pointerEvents={capturingShare ? "none" : "auto"}
-          accessibilityLabel={
-            phase !== "ready" && phase !== "gameover" ? "Pause" : "Settings"
-          }
+          accessibilityLabel="Menu"
         >
           <SymbolView
-            name={
-              phase !== "ready" && phase !== "gameover"
-                ? { ios: "pause.fill", android: "pause", web: "pause" }
-                : {
-                    ios: "gearshape.fill",
-                    android: "settings",
-                    web: "settings",
-                  }
-            }
-            size={20}
+            name={{
+              ios: "line.3.horizontal",
+              android: "menu",
+              web: "menu",
+            }}
+            size={22}
             tintColor={GameColors.white}
             weight="bold"
           />
@@ -1301,15 +1344,28 @@ export function GameScreen() {
         />
       ) : null}
 
-      <SettingsSheet
-        visible={settingsOpen}
+      <MenuSheet
+        visible={menuOpen}
         soundOn={!muted}
         hapticsOn={persist?.hapticsEnabled !== false}
-        canRestart={phase !== "ready"}
-        onClose={closeSettings}
+        canGoBack={phase !== "ready"}
+        dailyMode={dailyMode}
+        highScore={persist?.highScore ?? 0}
+        bestLevel={persist?.bestLevel ?? 0}
+        dailyTodayScore={
+          persist?.dailyBest.date === todayKey() ? persist.dailyBest.score : 0
+        }
+        dailyTodayLevel={
+          persist?.dailyBest.date === todayKey() ? persist.dailyBest.level : 0
+        }
+        dailyRecordScore={persist?.dailyRecord.score ?? 0}
+        dailyRecordLevel={persist?.dailyRecord.level ?? 0}
+        dailyRecordDate={persist?.dailyRecord.date ?? ""}
+        onClose={closeMenu}
         onToggleSound={() => void toggleSound()}
         onToggleHaptics={() => void toggleHaptics()}
-        onRestart={restartFromSettings}
+        onGoBack={goBackFromMenu}
+        onStartMode={startModeFromMenu}
         onSendFeedback={() => void sendFeedback()}
         onDeleteData={() => void deleteData()}
       />
@@ -1369,7 +1425,7 @@ const styles = StyleSheet.create({
     height: 78,
     marginLeft: -6,
   },
-  settingsBtn: {
+  menuBtn: {
     position: "absolute",
     left: 16,
     zIndex: 45,
@@ -1557,6 +1613,17 @@ const styles = StyleSheet.create({
   },
   gameOverTitleBest: {
     color: GameColors.lemon,
+  },
+  dailyShareDate: {
+    fontFamily: GameFonts.body,
+    fontSize: 18,
+    lineHeight: 22,
+    textAlign: "center",
+    color: GameColors.white,
+    textShadowColor: "rgba(26,28,44,0.45)",
+    textShadowOffset: { width: 0, height: 2 },
+    textShadowRadius: 0,
+    marginBottom: -4,
   },
   feedback: {
     position: "absolute",
